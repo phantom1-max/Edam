@@ -1,513 +1,1107 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Edam — Learn Anything</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<style>
-*{box-sizing:border-box}
+  <title>Edam — Learn Anything</title>
 
-:root{
-  --bg:#f5f5f7;
-  --text:#1d1d1f;
-  --muted:#6e6e73;
-  --glass:rgba(255,255,255,.62);
-  --border:rgba(255,255,255,.75);
-  --shadow:0 20px 60px rgba(0,0,0,.08);
-  --accent:#0071e3;
-}
+  <style>
+    * {
+      box-sizing: border-box;
+    }
 
-body{
-  margin:0;
-  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",Arial,sans-serif;
-  color:var(--text);
-  background:
-    radial-gradient(circle at 15% 10%,rgba(0,113,227,.13),transparent 28%),
-    radial-gradient(circle at 85% 20%,rgba(175,82,222,.12),transparent 28%),
-    var(--bg);
-  min-height:100vh;
-}
+    :root {
+      --bg: #f5f5f7;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --glass: rgba(255, 255, 255, 0.62);
+      --border: rgba(255, 255, 255, 0.78);
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.08);
+      --accent: #0071e3;
+      --accent-dark: #005bb5;
+    }
 
-nav{
-  position:sticky;
-  top:16px;
-  z-index:10;
-  width:min(1100px,calc(100% - 28px));
-  margin:16px auto 0;
-  padding:12px 18px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  background:rgba(255,255,255,.55);
-  backdrop-filter:blur(24px) saturate(180%);
-  -webkit-backdrop-filter:blur(24px) saturate(180%);
-  border:1px solid var(--border);
-  border-radius:22px;
-  box-shadow:var(--shadow);
-}
+    html {
+      scroll-behavior: smooth;
+    }
 
-.logo{
-  font-size:21px;
-  font-weight:700;
-  letter-spacing:-.5px;
-}
+    body {
+      margin: 0;
+      min-height: 100vh;
 
-nav button{
-  border:0;
-  background:transparent;
-  padding:9px 13px;
-  border-radius:14px;
-  cursor:pointer;
-  font-size:14px;
-}
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "SF Pro Display",
+        "SF Pro Text",
+        Arial,
+        sans-serif;
 
-nav button:hover{
-  background:rgba(0,0,0,.06);
-}
+      color: var(--text);
 
-main{
-  width:min(1100px,calc(100% - 28px));
-  margin:auto;
-}
+      background:
+        radial-gradient(
+          circle at 15% 10%,
+          rgba(0, 113, 227, 0.13),
+          transparent 28%
+        ),
+        radial-gradient(
+          circle at 85% 20%,
+          rgba(175, 82, 222, 0.12),
+          transparent 28%
+        ),
+        var(--bg);
+    }
 
-.hero{
-  text-align:center;
-  padding:90px 10px 55px;
-}
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
 
-.hero h1{
-  margin:0;
-  font-size:clamp(48px,8vw,86px);
-  line-height:.95;
-  letter-spacing:-5px;
-}
+    nav {
+      position: sticky;
+      top: 16px;
+      z-index: 100;
 
-.hero p{
-  max-width:650px;
-  margin:24px auto 0;
-  color:var(--muted);
-  font-size:20px;
-  line-height:1.5;
-}
+      width: min(1100px, calc(100% - 28px));
+      margin: 16px auto 0;
 
-.glass{
-  background:var(--glass);
-  backdrop-filter:blur(25px) saturate(160%);
-  -webkit-backdrop-filter:blur(25px) saturate(160%);
-  border:1px solid var(--border);
-  border-radius:28px;
-  box-shadow:var(--shadow);
-}
+      padding: 12px 18px;
 
-.section{
-  padding:28px;
-  margin-bottom:28px;
-}
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
 
-.section h2{
-  margin:0 0 7px;
-  font-size:28px;
-  letter-spacing:-1px;
-}
+      background: rgba(255, 255, 255, 0.55);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
 
-.subtitle{
-  color:var(--muted);
-  margin:0 0 22px;
-}
+      border: 1px solid var(--border);
+      border-radius: 22px;
 
-.examples{
-  display:grid;
-  grid-template-columns:repeat(4,1fr);
-  gap:14px;
-}
+      box-shadow: var(--shadow);
+    }
 
-.example{
-  padding:22px;
-  border-radius:20px;
-  background:rgba(255,255,255,.48);
-  border:1px solid rgba(255,255,255,.7);
-}
+    .logo {
+      font-size: 21px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
 
-.example .icon{
-  font-size:30px;
-  margin-bottom:12px;
-}
+    nav .nav-buttons {
+      display: flex;
+      gap: 4px;
+    }
 
-.example strong{
-  display:block;
-  font-size:16px;
-}
+    nav button {
+      border: 0;
+      background: transparent;
 
-.example span{
-  display:block;
-  margin-top:5px;
-  color:var(--muted);
-  font-size:13px;
-}
+      padding: 9px 13px;
+      border-radius: 14px;
 
-.form{
-  display:grid;
-  gap:15px;
-}
+      cursor: pointer;
+      font-size: 14px;
 
-input,select,textarea{
-  width:100%;
-  border:1px solid rgba(0,0,0,.08);
-  background:rgba(255,255,255,.72);
-  border-radius:16px;
-  padding:15px 16px;
-  font:inherit;
-  outline:none;
-}
+      transition:
+        background 0.2s ease,
+        transform 0.2s ease;
+    }
 
-textarea{
-  min-height:110px;
-  resize:vertical;
-}
+    nav button:hover {
+      background: rgba(0, 0, 0, 0.06);
+      transform: translateY(-1px);
+    }
 
-input:focus,select:focus,textarea:focus{
-  border-color:rgba(0,113,227,.4);
-  box-shadow:0 0 0 4px rgba(0,113,227,.08);
-}
+    main {
+      width: min(1100px, calc(100% - 28px));
+      margin: 0 auto;
+    }
 
-button.primary{
-  border:0;
-  border-radius:16px;
-  padding:15px 20px;
-  background:#0071e3;
-  color:white;
-  font-weight:600;
-  font-size:15px;
-  cursor:pointer;
-}
+    .hero {
+      text-align: center;
+      padding: 90px 10px 55px;
+    }
 
-button.primary:hover{
-  filter:brightness(1.08);
-}
+    .hero h1 {
+      margin: 0;
 
-button.primary:disabled{
-  opacity:.55;
-  cursor:wait;
-}
+      font-size: clamp(48px, 8vw, 86px);
+      line-height: 0.95;
+      letter-spacing: -5px;
+    }
 
-.courses{
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:15px;
-}
+    .hero p {
+      max-width: 650px;
+      margin: 24px auto 0;
 
-.course{
-  padding:22px;
-  border-radius:22px;
-  background:rgba(255,255,255,.5);
-  border:1px solid rgba(255,255,255,.7);
-}
+      color: var(--muted);
 
-.course h3{
-  margin:0 0 7px;
-}
+      font-size: 20px;
+      line-height: 1.5;
+    }
 
-.course p{
-  color:var(--muted);
-  font-size:14px;
-}
+    .glass {
+      background: var(--glass);
 
-.empty{
-  color:var(--muted);
-  padding:18px 0 4px;
-}
+      backdrop-filter: blur(25px) saturate(160%);
+      -webkit-backdrop-filter: blur(25px) saturate(160%);
 
-.result{
-  margin-top:22px;
-  display:none;
-}
+      border: 1px solid var(--border);
+      border-radius: 28px;
 
-.result.show{
-  display:block;
-}
+      box-shadow: var(--shadow);
+    }
 
-.ai-output{
-  white-space:pre-wrap;
-  line-height:1.65;
-  background:rgba(255,255,255,.6);
-  border-radius:20px;
-  padding:22px;
-  border:1px solid rgba(255,255,255,.75);
-}
+    .section {
+      padding: 28px;
+      margin-bottom: 28px;
+    }
 
-.status{
-  margin-top:12px;
-  color:var(--muted);
-  font-size:14px;
-}
+    .section h2 {
+      margin: 0 0 7px;
 
-footer{
-  text-align:center;
-  color:var(--muted);
-  padding:35px 0 50px;
-  font-size:13px;
-}
+      font-size: 28px;
+      letter-spacing: -1px;
+    }
 
-@media(max-width:800px){
-  .examples{grid-template-columns:repeat(2,1fr)}
-  .courses{grid-template-columns:1fr}
-}
+    .subtitle {
+      margin: 0 0 22px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
 
-@media(max-width:520px){
-  nav{top:8px;margin-top:8px}
-  .hero{padding-top:65px}
-  .hero h1{letter-spacing:-3px}
-  .hero p{font-size:17px}
-  .section{padding:20px;border-radius:23px}
-  .examples{grid-template-columns:1fr 1fr}
-}
-</style>
+    .examples {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+
+    .example {
+      padding: 22px;
+
+      border-radius: 20px;
+
+      background: rgba(255, 255, 255, 0.48);
+      border: 1px solid rgba(255, 255, 255, 0.7);
+
+      transition:
+        transform 0.2s ease,
+        background 0.2s ease;
+    }
+
+    .example:hover {
+      transform: translateY(-3px);
+      background: rgba(255, 255, 255, 0.62);
+    }
+
+    .example .icon {
+      font-size: 30px;
+      margin-bottom: 12px;
+    }
+
+    .example strong {
+      display: block;
+      font-size: 16px;
+    }
+
+    .example span {
+      display: block;
+
+      margin-top: 5px;
+
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .form {
+      display: grid;
+      gap: 15px;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+
+      border: 1px solid rgba(0, 0, 0, 0.08);
+
+      background: rgba(255, 255, 255, 0.72);
+
+      border-radius: 16px;
+
+      padding: 15px 16px;
+
+      outline: none;
+
+      transition:
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+    }
+
+    textarea {
+      min-height: 110px;
+      resize: vertical;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: rgba(0, 113, 227, 0.4);
+
+      box-shadow:
+        0 0 0 4px rgba(0, 113, 227, 0.08);
+    }
+
+    button.primary {
+      border: 0;
+
+      border-radius: 16px;
+
+      padding: 15px 20px;
+
+      background: var(--accent);
+      color: white;
+
+      font-weight: 600;
+      font-size: 15px;
+
+      cursor: pointer;
+
+      transition:
+        background 0.2s ease,
+        transform 0.2s ease,
+        opacity 0.2s ease;
+    }
+
+    button.primary:hover {
+      background: var(--accent-dark);
+      transform: translateY(-1px);
+    }
+
+    button.primary:disabled {
+      opacity: 0.55;
+      cursor: wait;
+      transform: none;
+    }
+
+    .status {
+      min-height: 20px;
+
+      margin-top: 2px;
+
+      color: var(--muted);
+
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .result {
+      margin-top: 22px;
+      display: none;
+    }
+
+    .result.show {
+      display: block;
+    }
+
+    .result h3 {
+      margin: 0 0 12px;
+      font-size: 20px;
+    }
+
+    .ai-output {
+      white-space: pre-wrap;
+
+      line-height: 1.7;
+
+      background: rgba(255, 255, 255, 0.6);
+
+      border-radius: 20px;
+
+      padding: 22px;
+
+      border: 1px solid rgba(255, 255, 255, 0.75);
+
+      overflow-wrap: anywhere;
+    }
+
+    .courses {
+      display: grid;
+
+      grid-template-columns: repeat(3, 1fr);
+
+      gap: 15px;
+    }
+
+    .course {
+      padding: 22px;
+
+      border-radius: 22px;
+
+      background: rgba(255, 255, 255, 0.5);
+
+      border: 1px solid rgba(255, 255, 255, 0.7);
+    }
+
+    .course h3 {
+      margin: 0 0 8px;
+      font-size: 18px;
+    }
+
+    .course p {
+      color: var(--muted);
+
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .course-meta {
+      margin-top: 14px;
+
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .empty {
+      grid-column: 1 / -1;
+
+      color: var(--muted);
+
+      padding: 18px 0 4px;
+    }
+
+    footer {
+      text-align: center;
+
+      color: var(--muted);
+
+      padding: 35px 0 50px;
+
+      font-size: 13px;
+    }
+
+    @media (max-width: 800px) {
+      .examples {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .courses {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 520px) {
+      nav {
+        top: 8px;
+        margin-top: 8px;
+      }
+
+      nav .nav-buttons {
+        gap: 0;
+      }
+
+      nav button {
+        padding: 8px 9px;
+        font-size: 13px;
+      }
+
+      .hero {
+        padding-top: 65px;
+      }
+
+      .hero h1 {
+        letter-spacing: -3px;
+      }
+
+      .hero p {
+        font-size: 17px;
+      }
+
+      .section {
+        padding: 20px;
+        border-radius: 23px;
+      }
+
+      .examples {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+  </style>
 </head>
 
 <body>
 
-<nav>
-  <div class="logo">Edam</div>
-  <div>
-    <button onclick="scrollToSection('create')">Create Course</button>
-    <button onclick="scrollToSection('planner')">AI Teacher</button>
-  </div>
-</nav>
+  <nav>
+    <div class="logo">Edam</div>
 
-<main>
+    <div class="nav-buttons">
+      <button type="button" onclick="scrollToSection('create')">
+        Create Course
+      </button>
 
-<section class="hero">
-  <h1>Learn anything.</h1>
-  <p>
-    Build your own learning path with Edam — from Mathematics and English
-    to programming, languages, science and beyond.
-  </p>
-</section>
-
-<section class="section glass">
-  <h2>What can you learn?</h2>
-  <p class="subtitle">Start anywhere. Learn at your level.</p>
-
-  <div class="examples">
-    <div class="example">
-      <div class="icon">📐</div>
-      <strong>Mathematics</strong>
-      <span>Numbers, algebra, geometry and more</span>
+      <button type="button" onclick="scrollToSection('planner')">
+        My Courses
+      </button>
     </div>
+  </nav>
 
-    <div class="example">
-      <div class="icon">📚</div>
-      <strong>English</strong>
-      <span>Grammar, vocabulary, reading and writing</span>
-    </div>
+  <main>
 
-    <div class="example">
-      <div class="icon">🌎</div>
-      <strong>Languages</strong>
-      <span>Learn a new language step by step</span>
-    </div>
+    <section class="hero">
+      <h1>Learn anything.</h1>
 
-    <div class="example">
-      <div class="icon">💻</div>
-      <strong>Computer Science</strong>
-      <span>Programming, algorithms and technology</span>
-    </div>
-  </div>
-</section>
+      <p>
+        Build your own learning path with Edam — from Mathematics and English
+        to programming, languages, science and beyond.
+      </p>
+    </section>
 
-<section id="create" class="section glass">
-  <h2>Create a Course</h2>
-  <p class="subtitle">
-    Tell Edam what you want to learn and Gemini will create a learning plan.
-  </p>
 
-  <div class="form">
-    <input id="courseName" placeholder="What do you want to learn? e.g. English Grammar">
+    <section class="section glass">
 
-    <select id="level">
-      <option value="">Choose your level</option>
-      <option>Beginner</option>
-      <option>Elementary</option>
-      <option>Intermediate</option>
-      <option>Advanced</option>
-      <option>University</option>
-      <option>Professional</option>
-    </select>
+      <h2>What can you learn?</h2>
 
-    <textarea id="goal" placeholder="What is your goal? e.g. I want to speak English confidently and improve my grammar."></textarea>
+      <p class="subtitle">
+        Start anywhere. Learn at your level.
+      </p>
 
-    <button class="primary" id="generateBtn" onclick="generateCourse()">
-      Create with Gemini
-    </button>
+      <div class="examples">
 
-    <div id="status" class="status"></div>
-  </div>
+        <div class="example">
+          <div class="icon">📐</div>
 
-  <div id="result" class="result">
-    <h3>Your AI-generated learning plan</h3>
-    <div id="output" class="ai-output"></div>
-  </div>
-</section>
+          <strong>Mathematics</strong>
 
-<section id="planner" class="section glass">
-  <h2>My Courses</h2>
-  <p class="subtitle">Courses you create will appear here.</p>
+          <span>
+            Numbers, algebra, geometry and more
+          </span>
+        </div>
 
-  <div id="courses" class="courses">
-    <div class="empty">You haven't created a course yet.</div>
-  </div>
-</section>
 
-</main>
+        <div class="example">
+          <div class="icon">📚</div>
 
-<footer>
-  Edam · Learn anything
-</footer>
+          <strong>English</strong>
 
-<script>
-const WORKER_URL = "https://edam-ai.rup62012.workers.dev/";
+          <span>
+            Grammar, vocabulary, reading and writing
+          </span>
+        </div>
 
-function scrollToSection(id){
-  document.getElementById(id).scrollIntoView({
-    behavior:"smooth"
-  });
-}
 
-function loadCourses(){
-  const courses = JSON.parse(localStorage.getItem("edamCourses") || "[]");
-  const container = document.getElementById("courses");
+        <div class="example">
+          <div class="icon">🌎</div>
 
-  if(!courses.length){
-    container.innerHTML =
-      '<div class="empty">You haven\\'t created a course yet.</div>';
-    return;
-  }
+          <strong>Languages</strong>
 
-  container.innerHTML = courses.map(course => `
-    <div class="course">
-      <h3>${escapeHtml(course.name)}</h3>
-      <p>${escapeHtml(course.level)}</p>
-      <p>${escapeHtml(course.goal)}</p>
-    </div>
-  `).join("");
-}
+          <span>
+            Learn a new language step by step
+          </span>
+        </div>
 
-async function generateCourse(){
 
-  const name = document.getElementById("courseName").value.trim();
-  const level = document.getElementById("level").value;
-  const goal = document.getElementById("goal").value.trim();
+        <div class="example">
+          <div class="icon">💻</div>
 
-  const button = document.getElementById("generateBtn");
-  const status = document.getElementById("status");
-  const result = document.getElementById("result");
-  const output = document.getElementById("output");
+          <strong>Computer Science</strong>
 
-  if(!name || !level || !goal){
-    status.textContent = "Please fill in the course, level and goal.";
-    return;
-  }
+          <span>
+            Programming, algorithms and technology
+          </span>
+        </div>
 
-  button.disabled = true;
-  button.textContent = "Gemini is creating your course...";
-  status.textContent = "Generating your learning path...";
-  result.classList.remove("show");
+      </div>
+    </section>
 
-  const prompt = `
-You are Edam, an educational AI teacher.
 
-Create a structured learning path for this course:
+    <section id="create" class="section glass">
 
-Course: ${name}
-Learner level: ${level}
-Goal: ${goal}
+      <h2>Create a Course</h2>
 
-Design a useful, realistic educational course.
+      <p class="subtitle">
+        Tell Edam what you want to learn and Gemini will create a learning plan.
+      </p>
 
-Include:
-1. Course overview
-2. 5-8 units
-3. 3-5 lessons per unit
-4. Practice activities
-5. A test after each major section
-6. A final test
-7. What the learner should be able to do after completing the course
+      <div class="form">
 
-For language learning such as English, include appropriate skills such as vocabulary,
-grammar, reading, writing, listening, pronunciation and communication when relevant.
+        <input
+          id="courseName"
+          type="text"
+          placeholder="What do you want to learn? e.g. English Grammar"
+        >
 
-Do not invent or cite fake textbooks, authors, institutions or sources.
-If reliable source material has not been supplied, clearly say that the plan is
-general educational guidance rather than being based on a specific textbook or syllabus.
 
-Make the response clear and easy for a student to follow.
-`;
+        <select id="level">
 
-  try{
-    const response = await fetch(WORKER_URL,{
-      method:"POST",
-      headers:{
-        "Content-Type":"application/json"
-      },
-      body:JSON.stringify({prompt})
-    });
+          <option value="">
+            Choose your level
+          </option>
 
-    const data = await response.json();
+          <option value="Beginner">
+            Beginner
+          </option>
 
-    if(!response.ok){
-      throw new Error(data.error || "Gemini request failed.");
+          <option value="Elementary">
+            Elementary
+          </option>
+
+          <option value="Intermediate">
+            Intermediate
+          </option>
+
+          <option value="Advanced">
+            Advanced
+          </option>
+
+          <option value="University">
+            University
+          </option>
+
+          <option value="Professional">
+            Professional
+          </option>
+
+        </select>
+
+
+        <textarea
+          id="goal"
+          placeholder="What is your goal? e.g. I want to speak English confidently and improve my grammar."
+        ></textarea>
+
+
+        <button
+          type="button"
+          class="primary"
+          id="generateBtn"
+          onclick="generateCourse()"
+        >
+          Create with Gemini
+        </button>
+
+
+        <div
+          id="status"
+          class="status"
+          aria-live="polite"
+        ></div>
+
+      </div>
+
+
+      <div
+        id="result"
+        class="result"
+      >
+
+        <h3>
+          Your AI-generated learning plan
+        </h3>
+
+        <div
+          id="output"
+          class="ai-output"
+        ></div>
+
+      </div>
+
+    </section>
+
+
+    <section
+      id="planner"
+      class="section glass"
+    >
+
+      <h2>My Courses</h2>
+
+      <p class="subtitle">
+        Courses you create will appear here.
+      </p>
+
+      <div
+        id="courses"
+        class="courses"
+      ></div>
+
+    </section>
+
+  </main>
+
+
+  <footer>
+    Edam · Learn anything
+  </footer>
+
+
+  <script>
+
+    /*
+      ==========================================
+      EDAM AI WORKER
+      ==========================================
+    */
+
+    const WORKER_URL =
+      "https://edam-ai.rup62012.workers.dev/";
+
+
+    /*
+      ==========================================
+      NAVIGATION
+      ==========================================
+    */
+
+    function scrollToSection(id) {
+
+      const element = document.getElementById(id);
+
+      if (!element) {
+        return;
+      }
+
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "start"
+      });
     }
 
-    output.textContent = data.text || "Gemini returned no content.";
-    result.classList.add("show");
 
-    const courses = JSON.parse(
-      localStorage.getItem("edamCourses") || "[]"
-    );
+    /*
+      ==========================================
+      HTML ESCAPING
+      ==========================================
+    */
 
-    courses.push({
-      name,
-      level,
-      goal,
-      plan:data.text,
-      created:new Date().toISOString()
-    });
+    function escapeHtml(value) {
 
-    localStorage.setItem(
-      "edamCourses",
-      JSON.stringify(courses)
-    );
+      return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+
+    /*
+      ==========================================
+      LOAD SAVED COURSES
+      ==========================================
+    */
+
+    function loadCourses() {
+
+      const container =
+        document.getElementById("courses");
+
+      if (!container) {
+        return;
+      }
+
+      let courses = [];
+
+      try {
+
+        courses = JSON.parse(
+          localStorage.getItem("edamCourses") || "[]"
+        );
+
+        if (!Array.isArray(courses)) {
+          courses = [];
+        }
+
+      } catch (error) {
+
+        console.error(
+          "Could not read saved courses:",
+          error
+        );
+
+        courses = [];
+      }
+
+
+      if (courses.length === 0) {
+
+        container.innerHTML = `
+          <div class="empty">
+            You haven't created a course yet.
+          </div>
+        `;
+
+        return;
+      }
+
+
+      container.innerHTML = courses
+        .slice()
+        .reverse()
+        .map(course => {
+
+          return `
+            <article class="course">
+
+              <h3>
+                ${escapeHtml(course.name)}
+              </h3>
+
+              <p>
+                <strong>Level:</strong>
+                ${escapeHtml(course.level)}
+              </p>
+
+              <p>
+                <strong>Goal:</strong>
+                ${escapeHtml(course.goal)}
+              </p>
+
+              <div class="course-meta">
+                Created with Gemini
+              </div>
+
+            </article>
+          `;
+
+        })
+        .join("");
+    }
+
+
+    /*
+      ==========================================
+      CREATE COURSE WITH GEMINI
+      ==========================================
+    */
+
+    window.generateCourse = async function generateCourse() {
+
+      const name =
+        document.getElementById("courseName").value.trim();
+
+      const level =
+        document.getElementById("level").value;
+
+      const goal =
+        document.getElementById("goal").value.trim();
+
+
+      const button =
+        document.getElementById("generateBtn");
+
+      const status =
+        document.getElementById("status");
+
+      const result =
+        document.getElementById("result");
+
+      const output =
+        document.getElementById("output");
+
+
+      /*
+        Validate form
+      */
+
+      if (!name || !level || !goal) {
+
+        status.textContent =
+          "Please fill in the course, level and goal.";
+
+        return;
+      }
+
+
+      /*
+        UI while Gemini works
+      */
+
+      button.disabled = true;
+
+      button.textContent =
+        "Gemini is creating your course...";
+
+      status.textContent =
+        "Generating your learning path...";
+
+      result.classList.remove("show");
+
+      output.textContent = "";
+
+
+      /*
+        ==========================================
+        PROMPT
+        ==========================================
+      */
+
+      const prompt = `
+
+You are Edam, an educational AI teacher.
+
+Create a structured and realistic learning path for this course.
+
+Course:
+${name}
+
+Learner level:
+${level}
+
+Learner goal:
+${goal}
+
+Design the course so that a student can actually follow it step by step.
+
+Include:
+
+1. Course overview
+
+2. Learning outcomes
+
+3. 5-8 units
+
+4. 3-5 lessons inside each unit
+
+5. Clear explanations for what each lesson teaches
+
+6. Practice activities
+
+7. Review activities
+
+8. A test after each major section
+
+9. A final test
+
+10. A suggested progression from easier concepts to harder concepts
+
+For English or language-learning courses, include relevant skills such as:
+
+- Vocabulary
+- Grammar
+- Reading
+- Writing
+- Listening
+- Pronunciation
+- Speaking
+- Communication
+
+Do not invent or cite fake textbooks, authors, institutions, studies, websites or sources.
+
+Do not claim that the course is based on a specific textbook, official syllabus or institution unless reliable source material was actually provided.
+
+When reliable source material has not been provided, clearly describe the course as general educational guidance.
+
+Keep the structure clear and easy for a student to follow.
+
+Use plain text headings and readable formatting.
+
+`;
+
+
+      /*
+        ==========================================
+        SEND REQUEST TO CLOUDFLARE WORKER
+        ==========================================
+      */
+
+      try {
+
+        const response = await fetch(
+          WORKER_URL,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+              prompt: prompt
+            })
+          }
+        );
+
+
+        /*
+          Read response safely
+        */
+
+        let data;
+
+        try {
+
+          data = await response.json();
+
+        } catch (jsonError) {
+
+          throw new Error(
+            "The AI server returned an invalid response."
+          );
+        }
+
+
+        /*
+          Handle Worker / Gemini errors
+        */
+
+        if (!response.ok) {
+
+          let message =
+            data?.error ||
+            "Gemini request failed.";
+
+          if (data?.details) {
+
+            const detailText =
+              typeof data.details === "string"
+                ? data.details
+                : JSON.stringify(data.details);
+
+            message +=
+              " " + detailText;
+          }
+
+          throw new Error(message);
+        }
+
+
+        /*
+          Get generated text
+        */
+
+        const generatedText =
+          typeof data?.text === "string"
+            ? data.text.trim()
+            : "";
+
+
+        if (!generatedText) {
+
+          throw new Error(
+            "Gemini returned no course content."
+          );
+        }
+
+
+        /*
+          Show result
+        */
+
+        output.textContent =
+          generatedText;
+
+        result.classList.add("show");
+
+
+        /*
+          Save course locally
+        */
+
+        let courses = [];
+
+        try {
+
+          courses = JSON.parse(
+            localStorage.getItem("edamCourses") || "[]"
+          );
+
+          if (!Array.isArray(courses)) {
+            courses = [];
+          }
+
+        } catch (storageReadError) {
+
+          courses = [];
+        }
+
+
+        courses.push({
+
+          name: name,
+
+          level: level,
+
+          goal: goal,
+
+          plan: generatedText,
+
+          created: new Date().toISOString()
+
+        });
+
+
+        localStorage.setItem(
+          "edamCourses",
+          JSON.stringify(courses)
+        );
+
+
+        /*
+          Refresh My Courses
+        */
+
+        loadCourses();
+
+
+        /*
+          Success message
+        */
+
+        status.textContent =
+          "Course created successfully.";
+
+
+        /*
+          Scroll to generated course
+        */
+
+        result.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+
+
+      } catch (error) {
+
+        console.error(
+          "Edam Gemini error:",
+          error
+        );
+
+
+        status.textContent =
+          "Something went wrong: " +
+          (error?.message || "Unknown error.");
+
+
+      } finally {
+
+        /*
+          Restore button
+        */
+
+        button.disabled = false;
+
+        button.textContent =
+          "Create with Gemini";
+      }
+    };
+
+
+    /*
+      ==========================================
+      INITIALIZE APP
+      ==========================================
+    */
 
     loadCourses();
 
-    status.textContent = "Course created successfully.";
-
-  }catch(error){
-
-    console.error(error);
-
-    status.textContent =
-      "Something went wrong: " + error.message;
-
-  }finally{
-
-    button.disabled = false;
-    button.textContent = "Create with Gemini";
-  }
-}
-
-function escapeHtml(value){
-  return String(value)
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
-}
-
-loadCourses();
-</script>
+  </script>
 
 </body>
 </html>
