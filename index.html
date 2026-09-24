@@ -1,10 +1,326 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Edam</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edam — AI Lesson Planner</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+        "SF Pro Text", Inter, sans-serif;
+      min-height: 100vh;
+      color: #111;
+      background:
+        radial-gradient(circle at 20% 10%, #dcecff 0, transparent 35%),
+        radial-gradient(circle at 80% 20%, #eadcff 0, transparent 35%),
+        linear-gradient(135deg, #f7f7f9, #e9edf5);
+    }
+
+    .nav {
+      width: min(1100px, calc(100% - 32px));
+      margin: 20px auto;
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid rgba(255,255,255,.65);
+      border-radius: 22px;
+      background: rgba(255,255,255,.45);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      box-shadow: 0 10px 40px rgba(0,0,0,.08);
+    }
+
+    .logo {
+      font-size: 21px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .badge {
+      padding: 8px 13px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.65);
+      font-size: 13px;
+      color: #555;
+    }
+
+    .hero {
+      width: min(1100px, calc(100% - 32px));
+      margin: 70px auto 30px;
+    }
+
+    .hero h1 {
+      font-size: clamp(42px, 7vw, 76px);
+      letter-spacing: -4px;
+      line-height: .95;
+      max-width: 800px;
+    }
+
+    .hero h1 span {
+      background: linear-gradient(90deg, #111, #777);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      margin-top: 22px;
+      font-size: 18px;
+      color: #666;
+      max-width: 600px;
+      line-height: 1.5;
+    }
+
+    .panel {
+      width: min(1100px, calc(100% - 32px));
+      margin: 35px auto 80px;
+      padding: 28px;
+      border-radius: 30px;
+      background: rgba(255,255,255,.55);
+      border: 1px solid rgba(255,255,255,.7);
+      backdrop-filter: blur(30px);
+      -webkit-backdrop-filter: blur(30px);
+      box-shadow: 0 20px 60px rgba(0,0,0,.09);
+    }
+
+    .panel h2 {
+      font-size: 25px;
+      margin-bottom: 22px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    label {
+      font-size: 13px;
+      font-weight: 600;
+      color: #555;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 15px;
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: 15px;
+      background: rgba(255,255,255,.75);
+      font: inherit;
+      outline: none;
+      transition: .2s;
+    }
+
+    input:focus,
+    select:focus {
+      border-color: #777;
+      box-shadow: 0 0 0 4px rgba(0,0,0,.05);
+    }
+
+    .generate {
+      width: 100%;
+      margin-top: 22px;
+      padding: 17px;
+      border: none;
+      border-radius: 17px;
+      background: #111;
+      color: white;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: .2s;
+    }
+
+    .generate:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 25px rgba(0,0,0,.18);
+    }
+
+    .result {
+      display: none;
+      margin-top: 25px;
+      padding: 25px;
+      border-radius: 22px;
+      background: rgba(255,255,255,.65);
+      border: 1px solid rgba(255,255,255,.8);
+    }
+
+    .result h3 {
+      margin-bottom: 15px;
+      font-size: 22px;
+    }
+
+    .result p,
+    .result li {
+      color: #444;
+      line-height: 1.6;
+    }
+
+    .result ul {
+      padding-left: 22px;
+    }
+
+    .loading {
+      opacity: .6;
+      pointer-events: none;
+    }
+
+    @media (max-width: 650px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero {
+        margin-top: 50px;
+      }
+
+      .panel {
+        padding: 20px;
+      }
+
+      .hero h1 {
+        letter-spacing: -2px;
+      }
+    }
+  </style>
 </head>
+
 <body>
-  <h1>Edam</h1>
-  <p>AI Lesson Planner</p>
+
+  <nav class="nav">
+    <div class="logo">Edam</div>
+    <div class="badge">AI Lesson Planner</div>
+  </nav>
+
+  <section class="hero">
+    <h1>Plan lessons.<br><span>Teach better.</span></h1>
+    <p>
+      Create structured lesson plans in seconds. Tell Edam what you're
+      teaching, and let your lesson take shape.
+    </p>
+  </section>
+
+  <main class="panel">
+    <h2>Create a lesson</h2>
+
+    <div class="grid">
+
+      <div class="field">
+        <label for="subject">Subject</label>
+        <input id="subject" type="text" placeholder="e.g. Mathematics">
+      </div>
+
+      <div class="field">
+        <label for="classLevel">Class</label>
+        <select id="classLevel">
+          <option>Class 5</option>
+          <option>Class 6</option>
+          <option>Class 7</option>
+          <option>Class 8</option>
+          <option>Class 9</option>
+          <option>Class 10</option>
+          <option>Class 11</option>
+          <option>Class 12</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="topic">Topic</label>
+        <input id="topic" type="text" placeholder="e.g. Fractions">
+      </div>
+
+      <div class="field">
+        <label for="duration">Duration</label>
+        <select id="duration">
+          <option>30 minutes</option>
+          <option>45 minutes</option>
+          <option>60 minutes</option>
+          <option>90 minutes</option>
+        </select>
+      </div>
+
+    </div>
+
+    <button class="generate" onclick="generateLesson()">
+      Generate Lesson Plan
+    </button>
+
+    <div class="result" id="result"></div>
+  </main>
+
+  <script>
+    function generateLesson() {
+      const subject = document.getElementById("subject").value.trim();
+      const topic = document.getElementById("topic").value.trim();
+      const classLevel = document.getElementById("classLevel").value;
+      const duration = document.getElementById("duration").value;
+
+      const result = document.getElementById("result");
+      const button = document.querySelector(".generate");
+
+      if (!subject || !topic) {
+        alert("Please enter a subject and topic.");
+        return;
+      }
+
+      button.classList.add("loading");
+      button.textContent = "Creating lesson...";
+
+      setTimeout(() => {
+        result.style.display = "block";
+
+        result.innerHTML = `
+          <h3>${topic} — ${subject}</h3>
+
+          <p><strong>Class:</strong> ${classLevel}</p>
+          <p><strong>Duration:</strong> ${duration}</p>
+
+          <br>
+
+          <p><strong>Learning objectives</strong></p>
+          <ul>
+            <li>Understand the key concepts of ${topic}.</li>
+            <li>Explain the topic using simple examples.</li>
+            <li>Apply the concept to a practical problem.</li>
+          </ul>
+
+          <br>
+
+          <p><strong>Lesson structure</strong></p>
+          <ul>
+            <li>5 min — Introduction and warm-up</li>
+            <li>15 min — Explain the core concept</li>
+            <li>15 min — Guided examples</li>
+            <li>10 min — Student activity</li>
+            <li>5 min — Review and assessment</li>
+          </ul>
+        `;
+
+        button.classList.remove("loading");
+        button.textContent = "Generate Lesson Plan";
+
+        result.scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
+
+      }, 700);
+    }
+  </script>
+
 </body>
 </html>
