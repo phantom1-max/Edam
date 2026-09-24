@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Edam — AI Lesson Planner</title>
+  <title>Edam — Learn Anything</title>
 
   <style>
     * {
@@ -12,56 +12,129 @@
       padding: 0;
     }
 
+    :root {
+      --text: #111;
+      --muted: #777;
+      --glass: rgba(255,255,255,.58);
+      --border: rgba(255,255,255,.8);
+    }
+
     body {
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
         "SF Pro Text", Inter, sans-serif;
       min-height: 100vh;
-      color: #111;
+      color: var(--text);
       background:
-        radial-gradient(circle at 20% 10%, #dcecff 0, transparent 35%),
-        radial-gradient(circle at 80% 20%, #eadcff 0, transparent 35%),
-        linear-gradient(135deg, #f7f7f9, #e9edf5);
+        radial-gradient(circle at 10% 5%, #dcecff 0, transparent 30%),
+        radial-gradient(circle at 90% 10%, #eadcff 0, transparent 30%),
+        radial-gradient(circle at 50% 90%, #dff8ef 0, transparent 30%),
+        linear-gradient(135deg, #f8f9fb, #e9edf4);
     }
 
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    /* NAV */
+
     .nav {
-      width: min(1100px, calc(100% - 32px));
-      margin: 20px auto;
-      padding: 12px 18px;
+      position: sticky;
+      top: 16px;
+      z-index: 20;
+
+      width: min(1180px, calc(100% - 32px));
+      margin: 16px auto;
+
+      padding: 12px 14px 12px 20px;
+
       display: flex;
       align-items: center;
       justify-content: space-between;
-      border: 1px solid rgba(255,255,255,.65);
+
+      border: 1px solid var(--border);
       border-radius: 22px;
-      background: rgba(255,255,255,.45);
-      backdrop-filter: blur(24px);
-      -webkit-backdrop-filter: blur(24px);
-      box-shadow: 0 10px 40px rgba(0,0,0,.08);
+
+      background: rgba(255,255,255,.55);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+
+      box-shadow: 0 12px 45px rgba(0,0,0,.08);
     }
 
     .logo {
-      font-size: 21px;
-      font-weight: 700;
-      letter-spacing: -0.5px;
+      font-size: 22px;
+      font-weight: 750;
+      letter-spacing: -0.7px;
     }
 
-    .badge {
-      padding: 8px 13px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.65);
-      font-size: 13px;
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .nav-link {
+      border: none;
+      background: transparent;
+      padding: 9px 13px;
+      border-radius: 12px;
+      cursor: pointer;
       color: #555;
     }
 
+    .nav-link:hover {
+      background: rgba(255,255,255,.7);
+      color: #111;
+    }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #111;
+      color: white;
+      font-weight: 650;
+    }
+
+    /* GENERAL */
+
+    .container {
+      width: min(1180px, calc(100% - 32px));
+      margin: auto;
+    }
+
+    /* HERO */
+
     .hero {
-      width: min(1100px, calc(100% - 32px));
-      margin: 70px auto 30px;
+      padding: 90px 0 55px;
+      text-align: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      padding: 8px 14px;
+      border-radius: 999px;
+
+      background: rgba(255,255,255,.6);
+      border: 1px solid rgba(255,255,255,.8);
+
+      color: #666;
+      font-size: 13px;
+      font-weight: 600;
+
+      backdrop-filter: blur(15px);
     }
 
     .hero h1 {
-      font-size: clamp(42px, 7vw, 76px);
-      letter-spacing: -4px;
-      line-height: .95;
-      max-width: 800px;
+      margin-top: 22px;
+
+      font-size: clamp(48px, 8vw, 88px);
+      line-height: .92;
+      letter-spacing: -5px;
     }
 
     .hero h1 span {
@@ -71,129 +144,409 @@
     }
 
     .hero p {
-      margin-top: 22px;
+      max-width: 650px;
+      margin: 24px auto 0;
+
+      color: var(--muted);
       font-size: 18px;
-      color: #666;
-      max-width: 600px;
-      line-height: 1.5;
+      line-height: 1.55;
     }
 
-    .panel {
-      width: min(1100px, calc(100% - 32px));
-      margin: 35px auto 80px;
+    /* CREATE CARD */
+
+    .create-card {
       padding: 28px;
       border-radius: 30px;
-      background: rgba(255,255,255,.55);
-      border: 1px solid rgba(255,255,255,.7);
+
+      background: var(--glass);
+      border: 1px solid var(--border);
+
       backdrop-filter: blur(30px);
       -webkit-backdrop-filter: blur(30px);
-      box-shadow: 0 20px 60px rgba(0,0,0,.09);
+
+      box-shadow: 0 20px 65px rgba(0,0,0,.08);
     }
 
-    .panel h2 {
-      font-size: 25px;
+    .create-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
       margin-bottom: 22px;
     }
 
-    .grid {
+    .create-top h2 {
+      font-size: 25px;
+      letter-spacing: -.8px;
+    }
+
+    .create-top p {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 5px;
+    }
+
+    .ai-badge {
+      padding: 8px 13px;
+      border-radius: 999px;
+      background: rgba(17,17,17,.06);
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .form-grid {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 18px;
+      grid-template-columns: 1.5fr 1fr 1fr;
+      gap: 14px;
     }
 
-    .field {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+    .field label {
+      display: block;
+      margin-bottom: 7px;
+      font-size: 12px;
+      font-weight: 650;
+      color: #666;
     }
 
-    label {
-      font-size: 13px;
-      font-weight: 600;
-      color: #555;
-    }
-
-    input,
-    select {
+    .field input,
+    .field select {
       width: 100%;
-      padding: 15px;
+      padding: 14px 15px;
+
       border: 1px solid rgba(0,0,0,.08);
       border-radius: 15px;
-      background: rgba(255,255,255,.75);
-      font: inherit;
+
       outline: none;
-      transition: .2s;
+      background: rgba(255,255,255,.75);
+
+      color: #111;
     }
 
-    input:focus,
-    select:focus {
+    .field input:focus,
+    .field select:focus {
       border-color: #777;
-      box-shadow: 0 0 0 4px rgba(0,0,0,.05);
+      box-shadow: 0 0 0 4px rgba(0,0,0,.045);
     }
 
-    .generate {
+    .source-row {
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 14px;
+    }
+
+    .source-input {
       width: 100%;
-      margin-top: 22px;
-      padding: 17px;
+      padding: 14px 15px;
+
+      border: 1px solid rgba(0,0,0,.08);
+      border-radius: 15px;
+
+      background: rgba(255,255,255,.75);
+      outline: none;
+    }
+
+    .create-button {
       border: none;
-      border-radius: 17px;
+      border-radius: 15px;
+
+      padding: 0 25px;
+
       background: #111;
       color: white;
-      font-size: 16px;
-      font-weight: 600;
+
+      font-weight: 650;
       cursor: pointer;
+
       transition: .2s;
     }
 
-    .generate:hover {
+    .create-button:hover {
       transform: translateY(-2px);
       box-shadow: 0 10px 25px rgba(0,0,0,.18);
     }
 
-    .result {
+    /* COURSES */
+
+    .section {
+      margin: 65px 0;
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .section-heading h2 {
+      font-size: 28px;
+      letter-spacing: -1px;
+    }
+
+    .section-heading p {
+      color: var(--muted);
+      margin-top: 5px;
+      font-size: 14px;
+    }
+
+    .view-all {
+      border: none;
+      background: transparent;
+      color: #666;
+      cursor: pointer;
+    }
+
+    .courses {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+    }
+
+    .course {
+      position: relative;
+      overflow: hidden;
+
+      padding: 22px;
+
+      min-height: 230px;
+
+      border-radius: 26px;
+
+      background: rgba(255,255,255,.55);
+      border: 1px solid var(--border);
+
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+
+      box-shadow: 0 12px 40px rgba(0,0,0,.06);
+
+      cursor: pointer;
+      transition: .25s;
+    }
+
+    .course:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 20px 50px rgba(0,0,0,.1);
+    }
+
+    .course-icon {
+      width: 48px;
+      height: 48px;
+
+      display: grid;
+      place-items: center;
+
+      border-radius: 15px;
+
+      background: rgba(255,255,255,.75);
+
+      font-size: 23px;
+    }
+
+    .course h3 {
+      margin-top: 20px;
+      font-size: 20px;
+      letter-spacing: -.5px;
+    }
+
+    .course p {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .progress {
+      position: absolute;
+      bottom: 22px;
+      left: 22px;
+      right: 22px;
+    }
+
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 7px;
+
+      font-size: 12px;
+      color: #777;
+    }
+
+    .progress-bar {
+      height: 7px;
+      border-radius: 999px;
+      background: rgba(0,0,0,.07);
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 38%;
+      border-radius: inherit;
+      background: #111;
+    }
+
+    .course:nth-child(2) .progress-fill {
+      width: 67%;
+    }
+
+    .course:nth-child(3) .progress-fill {
+      width: 15%;
+    }
+
+    /* TEST */
+
+    .test-banner {
+      padding: 28px;
+
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 25px;
+
+      border-radius: 28px;
+
+      background: rgba(17,17,17,.94);
+      color: white;
+
+      box-shadow: 0 20px 55px rgba(0,0,0,.15);
+    }
+
+    .test-banner h2 {
+      font-size: 25px;
+      letter-spacing: -.7px;
+    }
+
+    .test-banner p {
+      margin-top: 7px;
+      color: #aaa;
+      font-size: 14px;
+    }
+
+    .test-button {
+      border: none;
+      border-radius: 15px;
+      padding: 14px 20px;
+
+      background: white;
+      color: #111;
+
+      font-weight: 650;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    /* FOOTER */
+
+    footer {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto 35px;
+
+      text-align: center;
+      color: #888;
+      font-size: 13px;
+    }
+
+    /* MODAL */
+
+    .modal {
       display: none;
+
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+
+      padding: 20px;
+
+      align-items: center;
+      justify-content: center;
+
+      background: rgba(0,0,0,.25);
+      backdrop-filter: blur(10px);
+    }
+
+    .modal-card {
+      width: min(600px, 100%);
+
+      padding: 30px;
+
+      border-radius: 28px;
+
+      background: rgba(255,255,255,.9);
+
+      box-shadow: 0 30px 100px rgba(0,0,0,.2);
+    }
+
+    .modal-card h2 {
+      font-size: 28px;
+    }
+
+    .modal-card p {
+      margin-top: 10px;
+      color: #666;
+      line-height: 1.5;
+    }
+
+    .modal-actions {
       margin-top: 25px;
-      padding: 25px;
-      border-radius: 22px;
-      background: rgba(255,255,255,.65);
-      border: 1px solid rgba(255,255,255,.8);
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
     }
 
-    .result h3 {
-      margin-bottom: 15px;
-      font-size: 22px;
+    .close-button {
+      border: none;
+      padding: 12px 18px;
+      border-radius: 13px;
+      background: #eee;
+      cursor: pointer;
     }
 
-    .result p,
-    .result li {
-      color: #444;
-      line-height: 1.6;
-    }
-
-    .result ul {
-      padding-left: 22px;
-    }
-
-    .loading {
-      opacity: .6;
-      pointer-events: none;
-    }
-
-    @media (max-width: 650px) {
-      .grid {
+    @media (max-width: 800px) {
+      .form-grid {
         grid-template-columns: 1fr;
       }
 
-      .hero {
-        margin-top: 50px;
+      .source-row {
+        grid-template-columns: 1fr;
       }
 
-      .panel {
-        padding: 20px;
+      .create-button {
+        padding: 15px;
+      }
+
+      .courses {
+        grid-template-columns: 1fr;
+      }
+
+      .test-banner {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+
+    @media (max-width: 550px) {
+      .nav-link {
+        display: none;
+      }
+
+      .hero {
+        padding-top: 65px;
       }
 
       .hero h1 {
-        letter-spacing: -2px;
+        letter-spacing: -3px;
+      }
+
+      .create-card {
+        padding: 20px;
+      }
+
+      .create-top {
+        align-items: flex-start;
+        flex-direction: column;
       }
     }
   </style>
@@ -203,123 +556,442 @@
 
   <nav class="nav">
     <div class="logo">Edam</div>
-    <div class="badge">AI Lesson Planner</div>
+
+    <div class="nav-right">
+      <button class="nav-link" onclick="scrollToCourses()">My Courses</button>
+      <button class="nav-link" onclick="openTest()">Take a Test</button>
+      <div class="avatar">E</div>
+    </div>
   </nav>
 
-  <section class="hero">
-    <h1>Plan lessons.<br><span>Teach better.</span></h1>
+
+  <section class="hero container">
+
+    <div class="eyebrow">Your learning, your path</div>
+
+    <h1>
+      Learn anything.<br>
+      <span>Build your path.</span>
+    </h1>
+
     <p>
-      Create structured lesson plans in seconds. Tell Edam what you're
-      teaching, and let your lesson take shape.
+      Create structured courses for school, exams, university,
+      professional subjects, or anything else you want to master.
     </p>
+
   </section>
 
-  <main class="panel">
-    <h2>Create a lesson</h2>
 
-    <div class="grid">
+  <main class="container">
 
-      <div class="field">
-        <label for="subject">Subject</label>
-        <input id="subject" type="text" placeholder="e.g. Mathematics">
+    <section class="create-card">
+
+      <div class="create-top">
+
+        <div>
+          <h2>Create a Course</h2>
+          <p>Tell Edam what you want to learn or teach.</p>
+        </div>
+
+        <div class="ai-badge">
+          ✦ AI-powered
+        </div>
+
       </div>
 
-      <div class="field">
-        <label for="classLevel">Class</label>
-        <select id="classLevel">
-          <option>Class 5</option>
-          <option>Class 6</option>
-          <option>Class 7</option>
-          <option>Class 8</option>
-          <option>Class 9</option>
-          <option>Class 10</option>
-          <option>Class 11</option>
-          <option>Class 12</option>
-        </select>
+
+      <div class="form-grid">
+
+        <div class="field">
+          <label>WHAT DO YOU WANT TO LEARN?</label>
+
+          <input
+            id="courseName"
+            type="text"
+            placeholder="e.g. TET Child Development & Pedagogy"
+          >
+        </div>
+
+
+        <div class="field">
+          <label>LEVEL</label>
+
+          <select id="level">
+            <option>Beginner</option>
+            <option>School</option>
+            <option>High School</option>
+            <option>University</option>
+            <option>Competitive Exam</option>
+            <option>Professional</option>
+            <option>Advanced</option>
+          </select>
+        </div>
+
+
+        <div class="field">
+          <label>GOAL</label>
+
+          <select id="goal">
+            <option>Learn from scratch</option>
+            <option>Prepare for an exam</option>
+            <option>Revise</option>
+            <option>Teach this subject</option>
+            <option>Master the subject</option>
+          </select>
+        </div>
+
       </div>
 
-      <div class="field">
-        <label for="topic">Topic</label>
-        <input id="topic" type="text" placeholder="e.g. Fractions">
+
+      <div class="source-row">
+
+        <input
+          id="source"
+          class="source-input"
+          type="text"
+          placeholder="Optional: textbook, syllabus, exam name, or source"
+        >
+
+        <button class="create-button" onclick="createCourse()">
+          Create Course
+        </button>
+
       </div>
 
-      <div class="field">
-        <label for="duration">Duration</label>
-        <select id="duration">
-          <option>30 minutes</option>
-          <option>45 minutes</option>
-          <option>60 minutes</option>
-          <option>90 minutes</option>
-        </select>
+    </section>
+
+
+    <section class="section" id="coursesSection">
+
+      <div class="section-heading">
+
+        <div>
+          <h2>My Courses</h2>
+          <p>Your learning paths appear here.</p>
+        </div>
+
+        <button class="view-all">
+          View all →
+        </button>
+
+      </div>
+
+
+      <div class="courses" id="courses">
+
+        <article class="course" onclick="openCourse('Mathematics — Class 10')">
+
+          <div class="course-icon">∑</div>
+
+          <h3>Mathematics — Class 10</h3>
+
+          <p>
+            Algebra, geometry, statistics and more.
+          </p>
+
+          <div class="progress">
+
+            <div class="progress-info">
+              <span>Progress</span>
+              <span>38%</span>
+            </div>
+
+            <div class="progress-bar">
+              <div class="progress-fill"></div>
+            </div>
+
+          </div>
+
+        </article>
+
+
+        <article class="course" onclick="openCourse('Python — Beginner')">
+
+          <div class="course-icon">⌘</div>
+
+          <h3>Python — Beginner</h3>
+
+          <p>
+            Programming fundamentals through
+            interactive lessons.
+          </p>
+
+          <div class="progress">
+
+            <div class="progress-info">
+              <span>Progress</span>
+              <span>67%</span>
+            </div>
+
+            <div class="progress-bar">
+              <div class="progress-fill"></div>
+            </div>
+
+          </div>
+
+        </article>
+
+
+        <article class="course" onclick="openCourse('TET — Child Development')">
+
+          <div class="course-icon">◈</div>
+
+          <h3>TET — Child Development</h3>
+
+          <p>
+            Concepts, pedagogy and exam preparation.
+          </p>
+
+          <div class="progress">
+
+            <div class="progress-info">
+              <span>Progress</span>
+              <span>15%</span>
+            </div>
+
+            <div class="progress-bar">
+              <div class="progress-fill"></div>
+            </div>
+
+          </div>
+
+        </article>
+
+      </div>
+
+    </section>
+
+
+    <section class="section">
+
+      <div class="test-banner">
+
+        <div>
+          <h2>Ready to test yourself?</h2>
+
+          <p>
+            Take a test based on what you've learned
+            and see what you actually remember.
+          </p>
+        </div>
+
+        <button class="test-button" onclick="openTest()">
+          Take a Test →
+        </button>
+
+      </div>
+
+    </section>
+
+  </main>
+
+
+  <footer>
+    Edam · Learn anything. Build your path.
+  </footer>
+
+
+  <div class="modal" id="modal">
+
+    <div class="modal-card">
+
+      <h2 id="modalTitle">Course</h2>
+
+      <p id="modalText">
+        Your learning path will appear here.
+      </p>
+
+      <div class="modal-actions">
+
+        <button class="close-button" onclick="closeModal()">
+          Close
+        </button>
+
       </div>
 
     </div>
 
-    <button class="generate" onclick="generateLesson()">
-      Generate Lesson Plan
-    </button>
+  </div>
 
-    <div class="result" id="result"></div>
-  </main>
 
   <script>
-    function generateLesson() {
-      const subject = document.getElementById("subject").value.trim();
-      const topic = document.getElementById("topic").value.trim();
-      const classLevel = document.getElementById("classLevel").value;
-      const duration = document.getElementById("duration").value;
 
-      const result = document.getElementById("result");
-      const button = document.querySelector(".generate");
+    function createCourse() {
 
-      if (!subject || !topic) {
-        alert("Please enter a subject and topic.");
+      const name =
+        document.getElementById("courseName").value.trim();
+
+      const level =
+        document.getElementById("level").value;
+
+      const goal =
+        document.getElementById("goal").value;
+
+      const source =
+        document.getElementById("source").value.trim();
+
+      if (!name) {
+
+        alert("Tell Edam what you want to learn or teach.");
+
         return;
       }
 
-      button.classList.add("loading");
-      button.textContent = "Creating lesson...";
+      const courseGrid =
+        document.getElementById("courses");
 
-      setTimeout(() => {
-        result.style.display = "block";
+      const card =
+        document.createElement("article");
 
-        result.innerHTML = `
-          <h3>${topic} — ${subject}</h3>
+      card.className = "course";
 
-          <p><strong>Class:</strong> ${classLevel}</p>
-          <p><strong>Duration:</strong> ${duration}</p>
+      card.onclick = function() {
+        openCourse(name);
+      };
 
-          <br>
+      card.innerHTML = `
 
-          <p><strong>Learning objectives</strong></p>
-          <ul>
-            <li>Understand the key concepts of ${topic}.</li>
-            <li>Explain the topic using simple examples.</li>
-            <li>Apply the concept to a practical problem.</li>
-          </ul>
+        <div class="course-icon">✦</div>
 
-          <br>
+        <h3>${escapeHTML(name)}</h3>
 
-          <p><strong>Lesson structure</strong></p>
-          <ul>
-            <li>5 min — Introduction and warm-up</li>
-            <li>15 min — Explain the core concept</li>
-            <li>15 min — Guided examples</li>
-            <li>10 min — Student activity</li>
-            <li>5 min — Review and assessment</li>
-          </ul>
-        `;
+        <p>
+          ${escapeHTML(level)} ·
+          ${escapeHTML(goal)}
+          ${source ? " · Source added" : ""}
+        </p>
 
-        button.classList.remove("loading");
-        button.textContent = "Generate Lesson Plan";
+        <div class="progress">
 
-        result.scrollIntoView({
-          behavior: "smooth",
-          block: "center"
+          <div class="progress-info">
+            <span>Progress</span>
+            <span>0%</span>
+          </div>
+
+          <div class="progress-bar">
+            <div
+              class="progress-fill"
+              style="width:0%"
+            ></div>
+          </div>
+
+        </div>
+      `;
+
+      courseGrid.prepend(card);
+
+      document.getElementById("courseName").value = "";
+      document.getElementById("source").value = "";
+
+      openCourse(name);
+
+    }
+
+
+    function openCourse(name) {
+
+      document.getElementById("modalTitle").textContent =
+        name;
+
+      document.getElementById("modalText").innerHTML = `
+
+        <strong>Your learning path is being prepared.</strong>
+
+        <br><br>
+
+        In the full Edam system, this course will contain:
+
+        <br><br>
+
+        📚 Units<br>
+        📖 Lessons<br>
+        🧠 Practice<br>
+        📝 Tests<br>
+        📊 Progress & mastery
+
+        <br><br>
+
+        Courses will eventually be generated from
+        selected syllabi and trusted learning sources.
+
+      `;
+
+      document.getElementById("modal").style.display =
+        "flex";
+
+    }
+
+
+    function openTest() {
+
+      document.getElementById("modalTitle").textContent =
+        "Take a Test";
+
+      document.getElementById("modalText").innerHTML = `
+
+        Choose a course and Edam will create
+        an assessment based on the material you've studied.
+
+        <br><br>
+
+        The full version will support:
+
+        <br><br>
+
+        • Multiple-choice questions<br>
+        • Short answers<br>
+        • Difficulty levels<br>
+        • Timed tests<br>
+        • Explanations<br>
+        • Scores and mastery
+
+      `;
+
+      document.getElementById("modal").style.display =
+        "flex";
+
+    }
+
+
+    function closeModal() {
+
+      document.getElementById("modal").style.display =
+        "none";
+
+    }
+
+
+    function scrollToCourses() {
+
+      document.getElementById("coursesSection")
+        .scrollIntoView({
+          behavior: "smooth"
         });
 
-      }, 700);
     }
+
+
+    function escapeHTML(text) {
+
+      const div =
+        document.createElement("div");
+
+      div.textContent = text;
+
+      return div.innerHTML;
+
+    }
+
+
+    document.getElementById("modal")
+      .addEventListener("click", function(event) {
+
+        if (event.target === this) {
+          closeModal();
+        }
+
+      });
+
   </script>
 
 </body>
