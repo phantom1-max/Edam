@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Edam</string>
+    <string name="nav_create_course">Create Course</string>
+    <string name="nav_saved_courses">Saved Courses</string>
+    <string name="hero_title">Learn anything.</string>
+    <string name="hero_subtitle">Build a course, learn one lesson at a time, practice what you learn, and track your progress.</string>
+    <string name="hero_banner_content_description">Edam interactive learning illustration</string>
+    <string name="create_section_title">Create a Course</string>
+    <string name="create_section_subtitle">Gemini will create the learning structure. Lessons are generated when you open them.</string>
+    <string name="placeholder_course_name">What do you want to learn?</string>
+    <string name="placeholder_level">Choose your level</string>
+    <string name="placeholder_goal">What do you want to achieve?</string>
+    <string name="btn_create_with_gemini">Create with Gemini</string>
+    <string name="btn_building_course">Building your course…</string>
+    <string name="status_fill_fields">Fill in the course, level and goal.</string>
+    <string name="status_designing_path">Gemini is designing your learning path…</string>
+    <string name="status_course_created">Course created.</string>
+    <string name="status_error_prefix">Something went wrong: %1$s</string>
+    <string name="level_beginner">Beginner</string>
+    <string name="level_elementary">Elementary</string>
+    <string name="level_intermediate">Intermediate</string>
+    <string name="level_advanced">Advanced</string>
+    <string name="level_university">University</string>
+    <string name="level_professional">Professional</string>
+    <string name="course_progress_format">%1$d of %2$d lessons complete · %3$d%%</string>
+    <string name="unit_header_format">Unit %1$d · %2$s</string>
+    <string name="lesson_loading_objective">Loading lesson…</string>
+    <string name="lesson_loading_body">Gemini is preparing your lesson…</string>
+    <string name="lesson_error_title">Could not load this lesson.</string>
+    <string name="lesson_practice_heading">Practice</string>
+    <string name="lesson_summary_heading">Lesson summary</string>
+    <string name="lesson_mark_complete">Mark Lesson Complete</string>
+    <string name="lesson_completed_badge">Lesson Completed ✓</string>
+    <string name="feedback_correct_prefix">Correct! %1$s</string>
+    <string name="feedback_wrong_prefix">Not quite. %1$s</string>
+    <string name="close_lesson_content_description">Close lesson</string>
+    <string name="retry_lesson_button">Retry Lesson Generation</string>
+    <string name="security_prototype_notice">Prototype Notice: API keys configured in BuildConfig are included in the debug APK. Do not share this APK publicly.</string>
+</resources>

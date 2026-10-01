@@ -1,0 +1,8 @@
+{
+  "name": "Edam",
+  "description": "Build structured courses, learn one lesson at a time, practice with interactive quizzes, and track your progress.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
