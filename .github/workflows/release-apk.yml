@@ -62,7 +62,9 @@ jobs:
         run: |
           APK="app/build/outputs/apk/release/app-release.apk"
           test -s "$APK"
-          jarsigner -verify -strict -verbose "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK"
 
       - name: Publish GitHub Release
         env:
