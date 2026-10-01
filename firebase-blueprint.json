@@ -1,0 +1,129 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Stores user profile, subscription plan tier (BASIC, PRO, MAX), and theme preference.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The authenticated Firebase UID of the user."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name of the learner."
+        },
+        "email": {
+          "type": "string",
+          "description": "Email address of the learner."
+        },
+        "planTier": {
+          "type": "string",
+          "enum": ["BASIC", "PRO", "MAX"],
+          "description": "Active subscription tier."
+        },
+        "promoCodeUsed": {
+          "type": "string",
+          "description": "Optional promotional/developer code redeemed by the user."
+        },
+        "themeMode": {
+          "type": "string",
+          "description": "Selected theme mode identifier."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when account record was created (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when account record was last updated (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "displayName",
+        "planTier",
+        "themeMode",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CloudCourse": {
+      "title": "CloudCourse",
+      "description": "Stores a user's generated course curriculum, offline lessons bundle, and quiz/lesson progress.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique course identifier."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase UID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Course title."
+        },
+        "level": {
+          "type": "string",
+          "description": "Proficiency level."
+        },
+        "goal": {
+          "type": "string",
+          "description": "Learning goal."
+        },
+        "courseJson": {
+          "type": "string",
+          "description": "Serialized course structure JSON."
+        },
+        "completedLessonsJson": {
+          "type": "string",
+          "description": "Serialized list of completed lesson IDs."
+        },
+        "offlineLessonsJson": {
+          "type": "string",
+          "description": "Serialized map of offline cached lesson contents."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when course was created (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when course was updated (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "title",
+        "level",
+        "goal",
+        "courseJson",
+        "completedLessonsJson",
+        "offlineLessonsJson",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserAccount"
+      },
+      "description": "Per-user account settings, plan tier, and profile metadata."
+    },
+    "/users/{userId}/courses/{courseId}": {
+      "schema": {
+        "$ref": "#/entities/CloudCourse"
+      },
+      "description": "Per-user synced courses, offline lesson packs, and completion progress."
+    }
+  }
+}

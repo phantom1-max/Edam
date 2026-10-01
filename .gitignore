@@ -10,3 +10,4 @@
 local.properties
 .env
 app/build
+*-debug.log

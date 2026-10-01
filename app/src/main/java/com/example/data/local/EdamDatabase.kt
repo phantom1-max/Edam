@@ -67,8 +67,17 @@ interface EdamDao {
     @Query("SELECT * FROM cached_lessons WHERE courseId = :courseId AND lessonId = :lessonId LIMIT 1")
     suspend fun getCachedLesson(courseId: String, lessonId: String): CachedLessonEntity?
 
+    @Query("SELECT * FROM cached_lessons WHERE courseId = :courseId")
+    suspend fun getCachedLessonsForCourse(courseId: String): List<CachedLessonEntity>
+
+    @Query("SELECT COUNT(*) FROM cached_lessons WHERE courseId = :courseId")
+    fun observeCachedLessonCount(courseId: String): Flow<Int>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCachedLesson(cachedLesson: CachedLessonEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCachedLessons(cachedLessons: List<CachedLessonEntity>)
 }
 
 @Database(
