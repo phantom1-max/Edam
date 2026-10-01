@@ -14,8 +14,8 @@ android {
         applicationId = "com.aistudio.edamlearn.kxpqmr"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -27,6 +27,12 @@ android {
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
+        create("release") {
+            storeFile = file(providers.environmentVariable("ANDROID_KEYSTORE_PATH").orElse("${rootDir}/release.keystore").get())
+            storePassword = providers.environmentVariable("ANDROID_KEYSTORE_PASSWORD").orElse("").get()
+            keyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orElse("").get()
+            keyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orElse("").get()
+        }
     }
 
     buildTypes {
@@ -34,6 +40,7 @@ android {
             signingConfig = signingConfigs.getByName("debugConfig")
         }
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
