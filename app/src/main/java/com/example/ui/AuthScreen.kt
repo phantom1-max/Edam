@@ -4,127 +4,64 @@ import android.app.Activity
 import android.content.Context
 import android.util.Log
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.TrendingUp
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.CloudDone
-import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.GetSignInWithGoogleOption
 import androidx.credentials.exceptions.GetCredentialCancellationException
-import com.example.R
-import com.example.ui.theme.LocalEdamThemeSpec
-import com.google.android.libraries.identity.googleid.GetGoogleIdOption
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.OAuthProvider
+import com.google.firebase.auth.PhoneAuthOptions
+import com.google.firebase.auth.PhoneAuthProvider
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-
-fun attemptAutoSignIn(
-    context: Context,
-    credentialManager: CredentialManager,
-    onAuthSuccess: () -> Unit,
-    onUnauthenticated: () -> Unit,
-    scope: CoroutineScope
-) {
-    if (Firebase.auth.currentUser != null) {
-        onAuthSuccess()
-        return
-    }
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (e: Exception) {
-        onUnauthenticated()
-        return
-    }
-
-    val googleIdOption = GetGoogleIdOption.Builder()
-        .setFilterByAuthorizedAccounts(true)
-        .setServerClientId(clientId)
-        .setAutoSelectEnabled(true)
-        .build()
-
-    val request = GetCredentialRequest.Builder()
-        .addCredentialOption(googleIdOption)
-        .build()
-
-    scope.launch {
-        try {
-            val result = credentialManager.getCredential(context, request)
-            val credential = result.credential
-            if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
-                val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
-                Firebase.auth.signInWithCredential(authCredential).await()
-                onAuthSuccess()
-            } else {
-                onUnauthenticated()
-            }
-        } catch (e: Exception) {
-            onUnauthenticated()
-        }
-    }
-}
+import java.util.concurrent.TimeUnit
 
 fun onGoogleSignInClicked(
     context: Context,
@@ -135,40 +72,32 @@ fun onGoogleSignInClicked(
     onAuthCancelled: () -> Unit = {}
 ) {
     val clientId = try {
-        context.getString(R.string.default_web_client_id)
+        context.getString(com.example.R.string.default_web_client_id)
     } catch (e: Exception) {
         onAuthError("Google Sign-In configuration missing: default_web_client_id not found")
         return
     }
-
-    val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
     val request = GetCredentialRequest.Builder()
-        .addCredentialOption(signInOption)
+        .addCredentialOption(GetSignInWithGoogleOption.Builder(serverClientId = clientId).build())
         .build()
-
     scope.launch {
         try {
             val activity = context as? Activity
             if (activity == null) {
-                onAuthError("Activity context required for interactive Google Sign-In")
+                onAuthError("Activity context required for Google Sign-In")
                 return@launch
             }
             val result = credentialManager.getCredential(activity, request)
             val credential = result.credential
             if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
-                val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
-                Firebase.auth.signInWithCredential(authCredential).await()
+                val token = GoogleIdTokenCredential.createFrom(credential.data).idToken
+                Firebase.auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
                 onAuthSuccess()
-            } else {
-                onAuthError("Unexpected credential type")
-            }
-        } catch (e: GetCredentialCancellationException) {
-            Log.w("Auth", "Google Sign-In cancelled or dismissed: ${e.message}", e)
+            } else onAuthError("Unexpected credential type")
+        } catch (_: GetCredentialCancellationException) {
             onAuthCancelled()
         } catch (e: Exception) {
-            Log.e("Auth", "Google Sign-In failed", e)
-            onAuthError(e.localizedMessage ?: "Sign in failed")
+            onAuthError(e.localizedMessage ?: "Google sign-in failed")
         }
     }
 }
@@ -191,286 +120,225 @@ fun signOutUser(
 }
 
 @Composable
-fun AuthScreen(
-    onAuthSuccess: () -> Unit
-) {
+fun AuthScreen(onAuthSuccess: () -> Unit) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val credentialManager = remember(context) { CredentialManager.create(context) }
-    val themeSpec = LocalEdamThemeSpec.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var otp by remember { mutableStateOf("") }
+    var verificationId by remember { mutableStateOf<String?>(null) }
+    var createAccount by remember { mutableStateOf(false) }
+    var acceptedTerms by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
 
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    LaunchedEffect(Unit) {
-        attemptAutoSignIn(
-            context = context,
-            credentialManager = credentialManager,
-            onAuthSuccess = onAuthSuccess,
-            onUnauthenticated = {},
-            scope = scope
-        )
-    }
-
-    val glowAlpha = themeSpec.radialGlowAlpha
-    val primaryGlow = MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha)
-    val secondaryGlow = MaterialTheme.colorScheme.secondary.copy(alpha = glowAlpha)
-    val bgColor = MaterialTheme.colorScheme.background
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .drawBehind {
-                drawRect(color = bgColor)
-                if (glowAlpha > 0f) {
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(primaryGlow, bgColor.copy(alpha = 0f)),
-                            center = Offset(size.width * 0.18f, size.height * 0.14f),
-                            radius = size.maxDimension * 0.42f
-                        ),
-                        center = Offset(size.width * 0.18f, size.height * 0.14f),
-                        radius = size.maxDimension * 0.42f
-                    )
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(secondaryGlow, bgColor.copy(alpha = 0f)),
-                            center = Offset(size.width * 0.82f, size.height * 0.20f),
-                            radius = size.maxDimension * 0.42f
-                        ),
-                        center = Offset(size.width * 0.82f, size.height * 0.20f),
-                        radius = size.maxDimension * 0.42f
-                    )
-                }
-            }
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(20.dp)
-            .testTag("auth_screen"),
-        contentAlignment = Alignment.Center
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 520.dp)
-                .verticalScroll(rememberScrollState()),
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            tonalElevation = if (themeSpec.isHighContrast) 0.dp else 4.dp,
-            shadowElevation = if (themeSpec.isHighContrast) 0.dp else 12.dp,
-            border = BorderStroke(themeSpec.borderWidth, MaterialTheme.colorScheme.outlineVariant)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(28.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Brand badge
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.School,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // Purple & Blue Open-Book Hero Illustration matching app theme
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(176.dp),
-                    shape = RoundedCornerShape(22.dp),
-                    border = BorderStroke(
-                        width = themeSpec.borderWidth,
-                        brush = Brush.horizontalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primary,
-                                MaterialTheme.colorScheme.secondary
-                            )
-                        )
-                    )
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Image(
-                            painter = painterResource(id = R.drawable.img_edam_book_hero_1790869521278),
-                            contentDescription = stringResource(R.string.hero_banner_content_description),
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                        // Subtle theme-adaptive tint at bottom edge so image blends into active theme
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            MaterialTheme.colorScheme.background.copy(alpha = 0.05f),
-                                            MaterialTheme.colorScheme.background.copy(alpha = 0.38f)
-                                        )
-                                    )
-                                )
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(22.dp))
-
-                Text(
-                    text = stringResource(R.string.auth_title),
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Text(
-                    text = stringResource(R.string.auth_subtitle),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                // Feature highlights pill list
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AuthFeatureRow(
-                        icon = Icons.Filled.OfflinePin,
-                        text = "100% Offline Course & Quiz Packs after getting a course"
-                    )
-                    AuthFeatureRow(
-                        icon = Icons.AutoMirrored.Filled.TrendingUp,
-                        text = "Includes complete Share Market & Equity Investing Mastery course"
-                    )
-                    AuthFeatureRow(
-                        icon = Icons.Filled.CloudDone,
-                        text = "Visual Quiz Progress Tracker & Basic / Pro / Max tiers"
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Interactive Google / Gmail Sign-In & Sign-Up Button
-                Button(
-                    onClick = {
-                        isLoading = true
-                        errorMessage = null
-                        onGoogleSignInClicked(
-                            context = context,
-                            credentialManager = credentialManager,
-                            onAuthSuccess = {
-                                isLoading = false
-                                onAuthSuccess()
-                            },
-                            onAuthError = { msg ->
-                                isLoading = false
-                                errorMessage = msg
-                            },
-                            scope = scope,
-                            onAuthCancelled = {
-                                isLoading = false
-                            }
-                        )
-                    },
-                    enabled = !isLoading,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    ),
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 15.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .minimumInteractiveComponentSize()
-                        .testTag("google_sign_in_button")
-                ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "Signing in with Google…",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Filled.AccountCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = stringResource(R.string.btn_sign_in_google),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                    }
-                }
-
-                if (!errorMessage.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(
-                        text = errorMessage!!,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.testTag("auth_error_text")
-                    )
-                }
+    fun runAuth(block: suspend () -> Unit) {
+        if (!acceptedTerms) {
+            error = "Please acknowledge the Terms and Conditions before continuing."
+            return
+        }
+        loading = true
+        error = null
+        scope.launch {
+            try {
+                block()
+                onAuthSuccess()
+            } catch (e: Exception) {
+                error = e.localizedMessage ?: "Sign-in failed"
+            } finally {
+                loading = false
             }
         }
     }
-}
 
-@Composable
-private fun AuthFeatureRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.7f))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(18.dp)
-        )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        Column(
+            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 0.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                shadowElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(Icons.Filled.School, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Welcome to Edam", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Sign in to sync your courses and learning progress.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (createAccount) "Create account" else "Sign in", style = MaterialTheme.typography.titleMedium)
+                        TextButton(onClick = { createAccount = !createAccount; error = null }) {
+                            Text(if (createAccount) "Have an account? Sign in" else "Create account")
+                        }
+                    }
+                    OutlinedTextField(
+                        value = email, onValueChange = { email = it }, label = { Text("Email") },
+                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        enabled = !loading, modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = password, onValueChange = { password = it }, label = { Text("Password") },
+                        singleLine = true, visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        enabled = !loading, modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        onClick = {
+                            if (email.isBlank() || password.length < 6) {
+                                error = "Enter a valid email and a password with at least 6 characters."
+                            } else runAuth {
+                                if (createAccount) Firebase.auth.createUserWithEmailAndPassword(email.trim(), password).await()
+                                else Firebase.auth.signInWithEmailAndPassword(email.trim(), password).await()
+                            }
+                        },
+                        enabled = !loading && acceptedTerms,
+                        modifier = Modifier.fillMaxWidth().testTag("email_sign_in_button")
+                    ) {
+                        Text(if (createAccount) "Create account with email" else "Sign in with email")
+                    }
+
+                    HorizontalDivider()
+                    Text("Phone number", style = MaterialTheme.typography.titleMedium)
+                    OutlinedTextField(
+                        value = phone, onValueChange = { phone = it }, label = { Text("Phone (+country code)") },
+                        singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        enabled = !loading && verificationId == null, modifier = Modifier.fillMaxWidth()
+                    )
+                    if (verificationId == null) {
+                        OutlinedButton(
+                            onClick = {
+                                if (!acceptedTerms) {
+                                    error = "Please acknowledge the Terms and Conditions before continuing."
+                                } else {
+                                    val activity = context as? Activity
+                                    if (activity == null || phone.isBlank()) {
+                                        error = "Enter a phone number including its country code."
+                                    } else {
+                                        loading = true
+                                        error = null
+                                        val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
+                                            override fun onVerificationCompleted(credential: com.google.firebase.auth.PhoneAuthCredential) {
+                                                scope.launch {
+                                                    try {
+                                                        Firebase.auth.signInWithCredential(credential).await()
+                                                        onAuthSuccess()
+                                                    } catch (e: Exception) {
+                                                        error = e.localizedMessage ?: "Phone sign-in failed"
+                                                    } finally { loading = false }
+                                                }
+                                            }
+                                            override fun onVerificationFailed(e: Exception) {
+                                                error = e.localizedMessage ?: "Phone verification failed"
+                                                loading = false
+                                            }
+                                            override fun onCodeSent(id: String, token: PhoneAuthProvider.ForceResendingToken) {
+                                                verificationId = id
+                                                loading = false
+                                            }
+                                        }
+                                        PhoneAuthProvider.verifyPhoneNumber(
+                                            PhoneAuthOptions.newBuilder(Firebase.auth)
+                                                .setPhoneNumber(phone.trim())
+                                                .setTimeout(60L, TimeUnit.SECONDS)
+                                                .setActivity(activity)
+                                                .setCallbacks(callbacks)
+                                                .build()
+                                        )
+                                    }
+                                }
+                            },
+                            enabled = !loading && acceptedTerms,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Send SMS code") }
+                    } else {
+                        OutlinedTextField(
+                            value = otp, onValueChange = { otp = it }, label = { Text("SMS verification code") },
+                            singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            enabled = !loading, modifier = Modifier.fillMaxWidth()
+                        )
+                        Button(
+                            onClick = {
+                                val id = verificationId
+                                if (id.isNullOrBlank() || otp.isBlank()) error = "Enter the SMS code."
+                                else runAuth { Firebase.auth.signInWithCredential(PhoneAuthProvider.getCredential(id, otp.trim())).await() }
+                            },
+                            enabled = !loading && acceptedTerms,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Verify code and sign in") }
+                    }
+
+                    HorizontalDivider()
+                    Text("Continue with a provider", style = MaterialTheme.typography.titleMedium)
+                    OutlinedButton(
+                        onClick = {
+                            if (!acceptedTerms) error = "Please acknowledge the Terms and Conditions before continuing."
+                            else {
+                                loading = true
+                                error = null
+                                onGoogleSignInClicked(context, credentialManager, onAuthSuccess,
+                                    { message -> error = message; loading = false }, scope,
+                                    { loading = false })
+                            }
+                        },
+                        enabled = !loading && acceptedTerms,
+                        modifier = Modifier.fillMaxWidth().testTag("google_sign_in_button")
+                    ) { Text("Google") }
+
+                    listOf("apple.com" to "Apple", "facebook.com" to "Facebook", "github.com" to "GitHub").forEach { (providerId, label) ->
+                        OutlinedButton(
+                            onClick = {
+                                if (!acceptedTerms) error = "Please acknowledge the Terms and Conditions before continuing."
+                                else {
+                                    val activity = context as? Activity
+                                    if (activity == null) error = "Activity context required"
+                                    else {
+                                        loading = true
+                                        error = null
+                                        val provider = OAuthProvider.newBuilder(providerId).build()
+                                        scope.launch {
+                                            try {
+                                                Firebase.auth.startActivityForSignInWithProvider(activity, provider).await()
+                                                onAuthSuccess()
+                                            } catch (e: Exception) {
+                                                error = e.localizedMessage ?: "$label sign-in failed"
+                                            } finally { loading = false }
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !loading && acceptedTerms,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Continue with $label") }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = acceptedTerms, onCheckedChange = { acceptedTerms = it }, enabled = !loading)
+                        Text("I acknowledge Edam's Terms and Conditions", style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (loading) CircularProgressIndicator()
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center, modifier = Modifier.testTag("auth_error_text")) }
+                }
+            }
+        }
     }
 }
