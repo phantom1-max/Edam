@@ -5,6 +5,8 @@ import android.content.Context
 import android.util.Log
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.AndroidViewModel
@@ -30,6 +32,7 @@ import com.example.data.model.TrendingCourseTicker
 import com.example.data.model.TrendingMarketEngine
 import com.example.data.remote.EdamCloudRepository
 import com.example.data.repository.EdamRepository
+import com.example.notification.DailyGoalReminderScheduler
 import com.example.notification.EdamNotificationHelper
 import com.example.ui.theme.EdamThemeMode
 import androidx.compose.ui.graphics.Color
@@ -62,7 +65,16 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-private val Context.edamDataStore by preferencesDataStore(name = "edam_settings")
+internal val Context.edamDataStore by preferencesDataStore(name = "edam_settings")
+
+object EdamDailyGoalDataStoreKeys {
+    val DAILY_LESSON_GOAL = intPreferencesKey("daily_lesson_goal")
+    val DAILY_LESSONS_COMPLETED_TODAY = intPreferencesKey("daily_lessons_completed_today")
+    val DAILY_LESSONS_EPOCH_DAY = longPreferencesKey("daily_lessons_epoch_day")
+    val DAILY_REMINDER_ENABLED = booleanPreferencesKey("daily_goal_reminder_enabled")
+    val DAILY_REMINDER_HOUR = intPreferencesKey("daily_goal_reminder_hour")
+    val DAILY_REMINDER_MINUTE = intPreferencesKey("daily_goal_reminder_minute")
+}
 
 data class LessonModalState(
     val courseId: String,
@@ -90,6 +102,8 @@ data class EdamFormState(
     val level: String = "",
     val goal: String = "",
     val isGeneratingCourse: Boolean = false,
+    val courseCreationStageIndex: Int = 0,
+    val courseCreationProgress: Float = 0f,
     val statusMessage: String = "",
     val showSavedCoursesSheet: Boolean = false,
     val showSettingsModal: Boolean = false,
@@ -107,7 +121,12 @@ data class LocalPrefsState(
     val lastUnitId: String = "",
     val lastLessonId: String = "",
     val quizCheckpointsJson: String = "{}",
-    val pushNotificationsEnabled: Boolean = true
+    val pushNotificationsEnabled: Boolean = true,
+    val dailyLessonGoal: Int = 3,
+    val dailyLessonsCompletedToday: Int = 1,
+    val dailyReminderEnabled: Boolean = true,
+    val dailyReminderHour: Int = 20,
+    val dailyReminderMinute: Int = 0
 )
 
 enum class AppScreenDestination(
@@ -172,6 +191,8 @@ data class EdamUiState(
     val level: String = "",
     val goal: String = "",
     val isGeneratingCourse: Boolean = false,
+    val courseCreationStageIndex: Int = 0,
+    val courseCreationProgress: Float = 0f,
     val statusMessage: String = "",
     val activeCourse: Course? = null,
     val cachedLessonsCount: Int = 0,
@@ -225,8 +246,16 @@ data class EdamUiState(
     val isDrillAnswerCorrect: Boolean? = null,
     val streakBonusClaimedToday: Boolean = false,
     val dailyStreak: DailyStreakState = DailyStreakState(),
-    val selectedCompanion: EdamCompanionCharacter = EdamCompanionCharacter.EDAM
-)
+    val selectedCompanion: EdamCompanionCharacter = EdamCompanionCharacter.EDAM,
+    val dailyLessonGoal: Int = 3,
+    val dailyLessonsCompletedToday: Int = 1,
+    val dailyReminderEnabled: Boolean = true,
+    val dailyReminderHour: Int = 20,
+    val dailyReminderMinute: Int = 0
+) {
+    val dailyLessonGoalProgress: Float
+        get() = (dailyLessonsCompletedToday.toFloat() / dailyLessonGoal.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class EdamViewModel(application: Application) : AndroidViewModel(application) {
@@ -240,6 +269,12 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
     private val lastLessonPrefKey = stringPreferencesKey("last_lesson_id")
     private val quizCheckpointsPrefKey = stringPreferencesKey("quiz_checkpoints_json")
     private val pushNotificationsPrefKey = booleanPreferencesKey("push_notifications_enabled")
+    private val dailyLessonGoalPrefKey = EdamDailyGoalDataStoreKeys.DAILY_LESSON_GOAL
+    private val dailyLessonsCompletedTodayPrefKey = EdamDailyGoalDataStoreKeys.DAILY_LESSONS_COMPLETED_TODAY
+    private val dailyLessonsEpochDayPrefKey = EdamDailyGoalDataStoreKeys.DAILY_LESSONS_EPOCH_DAY
+    private val dailyReminderEnabledPrefKey = EdamDailyGoalDataStoreKeys.DAILY_REMINDER_ENABLED
+    private val dailyReminderHourPrefKey = EdamDailyGoalDataStoreKeys.DAILY_REMINDER_HOUR
+    private val dailyReminderMinutePrefKey = EdamDailyGoalDataStoreKeys.DAILY_REMINDER_MINUTE
 
     private val databaseId: String = application.getString(R.string.firestore_database_id)
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(databaseId)
@@ -257,6 +292,13 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
     private var tickCounter = 1L
 
     private val localPrefsFlow = appContext.edamDataStore.data.map { prefs ->
+        val todayEpoch = DailyStreakManager.currentEpochDay()
+        val storedEpoch = prefs[dailyLessonsEpochDayPrefKey] ?: todayEpoch
+        val completedToday = if (storedEpoch == todayEpoch) {
+            (prefs[dailyLessonsCompletedTodayPrefKey] ?: 1).coerceAtLeast(0)
+        } else {
+            0
+        }
         LocalPrefsState(
             themeMode = EdamThemeMode.fromName(prefs[themePrefKey]),
             planTier = PlanTier.fromId(prefs[planPrefKey]),
@@ -265,7 +307,12 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
             lastUnitId = prefs[lastUnitPrefKey] ?: "",
             lastLessonId = prefs[lastLessonPrefKey] ?: "",
             quizCheckpointsJson = prefs[quizCheckpointsPrefKey] ?: "{}",
-            pushNotificationsEnabled = prefs[pushNotificationsPrefKey] ?: true
+            pushNotificationsEnabled = prefs[pushNotificationsPrefKey] ?: true,
+            dailyLessonGoal = (prefs[dailyLessonGoalPrefKey] ?: 3).coerceIn(1, 10),
+            dailyLessonsCompletedToday = completedToday,
+            dailyReminderEnabled = prefs[dailyReminderEnabledPrefKey] ?: true,
+            dailyReminderHour = (prefs[dailyReminderHourPrefKey] ?: 20).coerceIn(0, 23),
+            dailyReminderMinute = (prefs[dailyReminderMinutePrefKey] ?: 0).coerceIn(0, 59)
         )
     }
 
@@ -380,6 +427,8 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
             level = form.level,
             goal = form.goal,
             isGeneratingCourse = form.isGeneratingCourse,
+            courseCreationStageIndex = form.courseCreationStageIndex,
+            courseCreationProgress = form.courseCreationProgress,
             statusMessage = form.statusMessage,
             activeCourse = activeCourse,
             cachedLessonsCount = cachedCount,
@@ -409,7 +458,12 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
             badgeDisplayItems = badgeItems,
             pushNotificationsEnabled = prefs.pushNotificationsEnabled,
             totalCompletedLessonsCount = totalCompletedLessons,
-            averageMasteryPercentage = avgMastery
+            averageMasteryPercentage = avgMastery,
+            dailyLessonGoal = prefs.dailyLessonGoal,
+            dailyLessonsCompletedToday = prefs.dailyLessonsCompletedToday,
+            dailyReminderEnabled = prefs.dailyReminderEnabled,
+            dailyReminderHour = prefs.dailyReminderHour,
+            dailyReminderMinute = prefs.dailyReminderMinute
         )
     }
 
@@ -620,6 +674,25 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
                 currentUserName = userName,
                 initialUserXp = initialXp
             )
+            // Ensure WorkManager daily learning goal reminder is scheduled according to DataStore prefs
+            try {
+                val snap = appContext.edamDataStore.data.first()
+                val pushEnabled = snap[pushNotificationsPrefKey] ?: true
+                val reminderEnabled = snap[dailyReminderEnabledPrefKey] ?: true
+                val hour = (snap[dailyReminderHourPrefKey] ?: 20).coerceIn(0, 23)
+                val minute = (snap[dailyReminderMinutePrefKey] ?: 0).coerceIn(0, 59)
+                val goal = (snap[dailyLessonGoalPrefKey] ?: 3).coerceIn(1, 10)
+                if (pushEnabled && reminderEnabled) {
+                    DailyGoalReminderScheduler.scheduleDailyGoalReminder(
+                        context = appContext,
+                        hour24 = hour,
+                        minute = minute,
+                        dailyGoal = goal
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w("EdamViewModel", "WorkManager schedule init warning", e)
+            }
         }
         startRealTimeMarketTickerLoop()
     }
@@ -765,9 +838,29 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openShareMarketCourse(onReady: () -> Unit = {}) {
         viewModelScope.launch {
+            formState.update {
+                it.copy(
+                    isGeneratingCourse = true,
+                    courseCreationStageIndex = 1,
+                    courseCreationProgress = 0.45f,
+                    statusMessage = "Kora & Edam are unpacking your Share Market & Equity Investing Mastery pack..."
+                )
+            }
+            delay(280L)
+            formState.update {
+                it.copy(
+                    courseCreationStageIndex = 3,
+                    courseCreationProgress = 0.92f,
+                    statusMessage = "Synchronizing candlestick charts, instruments & offline quizzes..."
+                )
+            }
+            delay(240L)
             repository.activateShareMarketCourse()
             formState.update {
                 it.copy(
+                    isGeneratingCourse = false,
+                    courseCreationStageIndex = 4,
+                    courseCreationProgress = 1f,
                     statusMessage = "Share Market & Equity Investing Mastery loaded (100% Offline Ready)."
                 )
             }
@@ -777,10 +870,30 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openChessGmCourse(onReady: () -> Unit = {}) {
         viewModelScope.launch {
-            repository.activateChessGmCourse()
             selectedCompanionFlow.value = EdamCompanionCharacter.VEX
             formState.update {
                 it.copy(
+                    isGeneratingCourse = true,
+                    courseCreationStageIndex = 1,
+                    courseCreationProgress = 0.45f,
+                    statusMessage = "Vex is setting up the 5-Unit Novice to Grandmaster Chess Academy..."
+                )
+            }
+            delay(280L)
+            formState.update {
+                it.copy(
+                    courseCreationStageIndex = 3,
+                    courseCreationProgress = 0.92f,
+                    statusMessage = "Loading tactical combinations, positional structures & GM endgames..."
+                )
+            }
+            delay(240L)
+            repository.activateChessGmCourse()
+            formState.update {
+                it.copy(
+                    isGeneratingCourse = false,
+                    courseCreationStageIndex = 4,
+                    courseCreationProgress = 1f,
                     statusMessage = "♟️ Novice to Grandmaster (GM) Chess Mastery loaded with Vex (100% Offline Ready)."
                 )
             }
@@ -817,6 +930,123 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         dailyStreakManager.toggleStreakFreeze()
     }
 
+    fun setDailyLessonGoal(targetLessons: Int) {
+        val clamped = targetLessons.coerceIn(1, 10)
+        viewModelScope.launch {
+            appContext.edamDataStore.edit { prefs ->
+                prefs[dailyLessonGoalPrefKey] = clamped
+                val todayEpoch = DailyStreakManager.currentEpochDay()
+                if (prefs[dailyLessonsEpochDayPrefKey] == null) {
+                    prefs[dailyLessonsEpochDayPrefKey] = todayEpoch
+                }
+            }
+            val current = uiState.value
+            if (current.pushNotificationsEnabled && current.dailyReminderEnabled) {
+                try {
+                    DailyGoalReminderScheduler.scheduleDailyGoalReminder(
+                        context = appContext,
+                        hour24 = current.dailyReminderHour,
+                        minute = current.dailyReminderMinute,
+                        dailyGoal = clamped
+                    )
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
+    fun setDailyReminderEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            appContext.edamDataStore.edit { prefs ->
+                prefs[dailyReminderEnabledPrefKey] = enabled
+                if (enabled) {
+                    prefs[pushNotificationsPrefKey] = true
+                }
+            }
+            val current = uiState.value
+            try {
+                if (enabled) {
+                    DailyGoalReminderScheduler.scheduleDailyGoalReminder(
+                        context = appContext,
+                        hour24 = current.dailyReminderHour,
+                        minute = current.dailyReminderMinute,
+                        dailyGoal = current.dailyLessonGoal
+                    )
+                } else {
+                    DailyGoalReminderScheduler.cancelDailyGoalReminder(appContext)
+                }
+            } catch (e: Exception) {
+                Log.w("EdamViewModel", "Failed to toggle WorkManager daily reminder", e)
+            }
+        }
+    }
+
+    fun updateDailyReminderTime(hour24: Int, minute: Int) {
+        val safeHour = hour24.coerceIn(0, 23)
+        val safeMinute = minute.coerceIn(0, 59)
+        viewModelScope.launch {
+            appContext.edamDataStore.edit { prefs ->
+                prefs[dailyReminderHourPrefKey] = safeHour
+                prefs[dailyReminderMinutePrefKey] = safeMinute
+                prefs[dailyReminderEnabledPrefKey] = true
+                prefs[pushNotificationsPrefKey] = true
+            }
+            try {
+                DailyGoalReminderScheduler.scheduleDailyGoalReminder(
+                    context = appContext,
+                    hour24 = safeHour,
+                    minute = safeMinute,
+                    dailyGoal = uiState.value.dailyLessonGoal
+                )
+            } catch (e: Exception) {
+                Log.w("EdamViewModel", "Failed to schedule WorkManager daily reminder time", e)
+            }
+        }
+    }
+
+    fun triggerImmediateDailyGoalReminder() {
+        val current = uiState.value
+        val formattedTime = DailyGoalReminderScheduler.formatTime12Hour(
+            current.dailyReminderHour,
+            current.dailyReminderMinute
+        )
+        EdamNotificationHelper.sendDailyGoalReminderNotification(
+            context = appContext,
+            completedToday = current.dailyLessonsCompletedToday,
+            dailyGoal = current.dailyLessonGoal,
+            currentStreak = current.dailyStreak.currentStreak,
+            scheduledTimeLabel = formattedTime
+        )
+        try {
+            DailyGoalReminderScheduler.triggerImmediateGoalReminderWork(
+                context = appContext,
+                hour24 = current.dailyReminderHour,
+                minute = current.dailyReminderMinute,
+                dailyGoal = current.dailyLessonGoal
+            )
+        } catch (e: Exception) {
+            Log.w("EdamViewModel", "Failed to enqueue immediate WorkManager reminder", e)
+        }
+    }
+
+    fun recordDailyLessonGoalProgress(increment: Int = 1) {
+        viewModelScope.launch {
+            val todayEpoch = DailyStreakManager.currentEpochDay()
+            appContext.edamDataStore.edit { prefs ->
+                val storedEpoch = prefs[dailyLessonsEpochDayPrefKey] ?: todayEpoch
+                val baseCount = if (storedEpoch == todayEpoch) {
+                    prefs[dailyLessonsCompletedTodayPrefKey] ?: 1
+                } else {
+                    0
+                }
+                prefs[dailyLessonsEpochDayPrefKey] = todayEpoch
+                prefs[dailyLessonsCompletedTodayPrefKey] = (baseCount + increment).coerceAtLeast(0)
+            }
+            dailyStreakManager.recordStudyActivity(xpEarned = 25 * increment.coerceAtLeast(1))
+            repository.awardLeaderboardXp(25 * increment.coerceAtLeast(1))
+        }
+    }
+
     fun createCourse(onCourseCreated: () -> Unit = {}) {
         val current = formState.value
         val name = current.courseName.trim()
@@ -833,17 +1063,43 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         formState.update {
             it.copy(
                 isGeneratingCourse = true,
-                statusMessage = "Edam is designing your learning path & bundling offline lessons..."
+                courseCreationStageIndex = 0,
+                courseCreationProgress = 0.22f,
+                statusMessage = "Stage 1/4: Edam is analyzing \"$name\" ($level) & calibrating your learning path..."
             )
         }
 
         viewModelScope.launch {
             try {
+                delay(320L)
+                formState.update {
+                    it.copy(
+                        courseCreationStageIndex = 1,
+                        courseCreationProgress = 0.52f,
+                        statusMessage = "Stage 2/4: Structuring modular units, outcomes & progressive milestones..."
+                    )
+                }
+                delay(320L)
+                formState.update {
+                    it.copy(
+                        courseCreationStageIndex = 2,
+                        courseCreationProgress = 0.82f,
+                        statusMessage = "Stage 3/4: Crafting interactive lessons, quizzes & bundling offline study pack..."
+                    )
+                }
                 val created = repository.createAndSaveCourse(
                     courseName = name,
                     level = level,
                     goal = goal
                 )
+                formState.update {
+                    it.copy(
+                        courseCreationStageIndex = 3,
+                        courseCreationProgress = 0.96f,
+                        statusMessage = "Stage 4/4: Finalizing course syllabus & unlocking +35 XP..."
+                    )
+                }
+                delay(220L)
                 dailyStreakManager.recordStudyActivity(xpEarned = 35)
                 repository.awardLeaderboardXp(35)
                 marketState.update {
@@ -852,6 +1108,8 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
                 formState.update {
                     it.copy(
                         isGeneratingCourse = false,
+                        courseCreationStageIndex = 4,
+                        courseCreationProgress = 1.0f,
                         statusMessage = "Course created & saved for offline study."
                     )
                 }
@@ -860,7 +1118,9 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
                 formState.update {
                     it.copy(
                         isGeneratingCourse = false,
-                        statusMessage = "Something went wrong: ${error.message ?: "AI request failed."}"
+                        courseCreationStageIndex = 0,
+                        courseCreationProgress = 0f,
+                        statusMessage = "Something went wrong: ${error.message ?: "Edam request failed."}"
                     )
                 }
             }
@@ -994,6 +1254,17 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
             )
             dailyStreakManager.recordStudyActivity(xpEarned = 45)
             repository.awardLeaderboardXp(45)
+            val todayEpoch = DailyStreakManager.currentEpochDay()
+            appContext.edamDataStore.edit { prefs ->
+                val storedEpoch = prefs[dailyLessonsEpochDayPrefKey] ?: todayEpoch
+                val baseCount = if (storedEpoch == todayEpoch) {
+                    prefs[dailyLessonsCompletedTodayPrefKey] ?: 1
+                } else {
+                    0
+                }
+                prefs[dailyLessonsEpochDayPrefKey] = todayEpoch
+                prefs[dailyLessonsCompletedTodayPrefKey] = baseCount + 1
+            }
             if (newlyEarned.isNotEmpty()) {
                 val latest = newlyEarned.last()
                 formState.update {
@@ -1044,6 +1315,20 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             appContext.edamDataStore.edit { prefs ->
                 prefs[pushNotificationsPrefKey] = enabled
+            }
+            val current = uiState.value
+            try {
+                if (enabled && current.dailyReminderEnabled) {
+                    DailyGoalReminderScheduler.scheduleDailyGoalReminder(
+                        context = appContext,
+                        hour24 = current.dailyReminderHour,
+                        minute = current.dailyReminderMinute,
+                        dailyGoal = current.dailyLessonGoal
+                    )
+                } else if (!enabled) {
+                    DailyGoalReminderScheduler.cancelDailyGoalReminder(appContext)
+                }
+            } catch (_: Exception) {
             }
         }
     }

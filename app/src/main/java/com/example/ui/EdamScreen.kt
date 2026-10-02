@@ -1,12 +1,25 @@
 package com.example.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -48,6 +61,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -66,6 +80,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -88,9 +103,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -450,6 +468,8 @@ fun EdamApp(
                                     goal = uiState.goal,
                                     availableLevels = viewModel.availableLevels,
                                     isGenerating = uiState.isGeneratingCourse,
+                                    courseCreationStageIndex = uiState.courseCreationStageIndex,
+                                    courseCreationProgress = uiState.courseCreationProgress,
                                     statusMessage = uiState.statusMessage,
                                     selectedCompanion = uiState.selectedCompanion,
                                     onCourseNameChange = viewModel::onCourseNameChange,
@@ -489,19 +509,28 @@ fun EdamApp(
                                 )
                             }
 
-                            // 4: Active Course section with Offline Ready indicator (or Mascot Empty State)
+                            // 4: Active Course section with Offline Ready indicator & Animated Entrance (or Mascot Empty State)
                             val course = uiState.activeCourse
                             if (course != null) {
-                                item(key = "course_header_${course.id}") {
-                                    CourseOverviewCard(
-                                        course = course,
-                                        cachedLessonsCount = uiState.cachedLessonsCount,
-                                        selectedCompanion = uiState.selectedCompanion,
-                                        onEnsureOffline = viewModel::ensureActiveCourseOfflineReady,
-                                        onOpenLesson = { unitId, lessonId ->
-                                            viewModel.openLesson(unitId = unitId, lessonId = lessonId)
-                                        }
-                                    )
+                                item(key = "course_header_animated_section") {
+                                    AnimatedContent(
+                                        targetState = course,
+                                        transitionSpec = {
+                                            (fadeIn(animationSpec = tween(380)) + expandVertically(animationSpec = tween(380)))
+                                                .togetherWith(fadeOut(animationSpec = tween(220)))
+                                        },
+                                        label = "active_course_transition"
+                                    ) { animatedCourse ->
+                                        CourseOverviewCard(
+                                            course = animatedCourse,
+                                            cachedLessonsCount = uiState.cachedLessonsCount,
+                                            selectedCompanion = uiState.selectedCompanion,
+                                            onEnsureOffline = viewModel::ensureActiveCourseOfflineReady,
+                                            onOpenLesson = { unitId, lessonId ->
+                                                viewModel.openLesson(unitId = unitId, lessonId = lessonId)
+                                            }
+                                        )
+                                    }
                                 }
                             } else {
                                 item(key = "empty_course_state") {
@@ -577,7 +606,7 @@ fun EdamApp(
                 )
             }
 
-            // User Profile Screen with earned badges, SharedPreferences daily streak & companions
+            // User Profile Screen with earned badges, SharedPreferences daily streak, DataStore daily lesson goal & companions
             if (uiState.showProfileModal) {
                 UserProfileDialog(
                     userDisplayName = uiState.userDisplayName,
@@ -593,6 +622,16 @@ fun EdamApp(
                     onSelectCompanion = viewModel::selectCompanionCharacter,
                     onCheckInStreak = { viewModel.checkInDailyStreak() },
                     onToggleStreakFreeze = viewModel::toggleStreakFreeze,
+                    dailyLessonGoal = uiState.dailyLessonGoal,
+                    dailyLessonsCompletedToday = uiState.dailyLessonsCompletedToday,
+                    onSetDailyLessonGoal = viewModel::setDailyLessonGoal,
+                    onRecordDailyLessonProgress = { viewModel.recordDailyLessonGoalProgress() },
+                    dailyReminderEnabled = uiState.dailyReminderEnabled,
+                    dailyReminderHour = uiState.dailyReminderHour,
+                    dailyReminderMinute = uiState.dailyReminderMinute,
+                    onToggleDailyReminder = viewModel::setDailyReminderEnabled,
+                    onUpdateDailyReminderTime = viewModel::updateDailyReminderTime,
+                    onTriggerImmediateGoalReminder = viewModel::triggerImmediateDailyGoalReminder,
                     onTogglePushNotifications = viewModel::setPushNotificationsEnabled,
                     onSendTestNotification = viewModel::sendTestNotification,
                     onClose = { viewModel.toggleProfileModal(false) }
@@ -1345,6 +1384,8 @@ private fun CreateCourseSection(
     goal: String,
     availableLevels: List<String>,
     isGenerating: Boolean,
+    courseCreationStageIndex: Int = 0,
+    courseCreationProgress: Float = 0f,
     statusMessage: String,
     selectedCompanion: EdamCompanionCharacter,
     onCourseNameChange: (String) -> Unit,
@@ -1715,7 +1756,24 @@ private fun CreateCourseSection(
                 }
             }
 
-            // 5. Status Line (#status) with Animated Edam Mascot feedback
+            // 5. Animated Course Creation Stage & Status Line (#status) with Edam Mascot feedback
+            AnimatedVisibility(
+                visible = isGenerating,
+                enter = fadeIn(tween(260)) + expandVertically(tween(300)),
+                exit = fadeOut(tween(200)) + shrinkVertically(tween(240))
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    NewCourseGenerationAnimationCard(
+                        courseTitle = courseName.ifBlank { "Your New Edam Course" },
+                        stageIndex = courseCreationStageIndex,
+                        progress = courseCreationProgress,
+                        statusMessage = statusMessage,
+                        selectedCompanion = selectedCompanion
+                    )
+                }
+            }
+
             if (isGenerating || statusMessage.isNotBlank()) {
                 Spacer(modifier = Modifier.height(14.dp))
                 val isErrorStatus = statusMessage.startsWith("Something went wrong") ||
@@ -1735,6 +1793,245 @@ private fun CreateCourseSection(
                     character = selectedCompanion,
                     modifier = Modifier.testTag("status_text")
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NewCourseGenerationAnimationCard(
+    courseTitle: String,
+    stageIndex: Int,
+    progress: Float,
+    statusMessage: String,
+    selectedCompanion: EdamCompanionCharacter,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "new_course_gen_transition")
+    val orbitAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "course_orbit_angle"
+    )
+    val mascotPulse by infiniteTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "course_mascot_pulse"
+    )
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress.coerceIn(0.15f, 1f),
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = 220f),
+        label = "course_gen_progress_bar"
+    )
+
+    val stages = remember {
+        listOf(
+            "Analyzing topic prerequisites & calibrating proficiency",
+            "Structuring modular units & progressive learning milestones",
+            "Crafting interactive lessons, explanations & practice quizzes",
+            "Bundling 100% offline study pack & unlocking XP rewards"
+        )
+    }
+
+    val primaryAccent = Color(selectedCompanion.sproutPrimaryHex)
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize()
+            .testTag("course_generation_animation_card"),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF111827),
+        border = BorderStroke(1.5.dp, primaryAccent.copy(alpha = 0.8f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF1F2937),
+                            Color(0xFF111827)
+                        )
+                    )
+                )
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            // Orbiting Energy Rings + Pulsing Edam Mascot Stage
+            Box(
+                modifier = Modifier.size(132.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val strokePx = 4.dp.toPx()
+                    val outerRadius = (size.minDimension - strokePx * 2) / 2f
+                    val innerRadius = outerRadius * 0.78f
+
+                    // Outer ambient ring
+                    drawCircle(
+                        color = primaryAccent.copy(alpha = 0.18f),
+                        radius = outerRadius,
+                        style = Stroke(width = strokePx)
+                    )
+
+                    // Rotating outer energy arc
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                primaryAccent,
+                                Color(0xFFFBBF24),
+                                Color.Transparent
+                            )
+                        ),
+                        startAngle = orbitAngle,
+                        sweepAngle = 210f,
+                        useCenter = false,
+                        style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                    )
+
+                    // Counter-rotating inner arc
+                    drawArc(
+                        color = Color(0xFF10B981).copy(alpha = 0.75f),
+                        startAngle = -orbitAngle * 1.3f,
+                        sweepAngle = 120f,
+                        useCenter = false,
+                        topLeft = Offset(
+                            (size.width - innerRadius * 2) / 2f,
+                            (size.height - innerRadius * 2) / 2f
+                        ),
+                        size = androidx.compose.ui.geometry.Size(innerRadius * 2, innerRadius * 2),
+                        style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+
+                Box(modifier = Modifier.scale(mascotPulse)) {
+                    EdamMascot(
+                        expression = EdamExpression.WORKING,
+                        character = selectedCompanion,
+                        size = 84.dp,
+                        showTablet = true
+                    )
+                }
+            }
+
+            Text(
+                text = "Building \"$courseTitle\"",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                color = Color(0xFFEDE9E4),
+                textAlign = TextAlign.Center
+            )
+
+            Text(
+                text = statusMessage.ifBlank {
+                    "${selectedCompanion.displayName} is assembling your custom curriculum..."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = Color(0xFFFBBF24),
+                textAlign = TextAlign.Center
+            )
+
+            // Animated Progress Bar
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Course Synthesis Progress",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFEDE9E4).copy(alpha = 0.75f)
+                    )
+                    Text(
+                        text = "${(animatedProgress * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
+                        color = primaryAccent
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = { animatedProgress },
+                    color = primaryAccent,
+                    trackColor = Color(0xFF374151),
+                    strokeCap = StrokeCap.Round,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(999.dp))
+                        .testTag("course_generation_progress_bar")
+                )
+            }
+
+            // 4-Stage Animated Checklist
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                stages.forEachIndexed { idx, stepLabel ->
+                    val isDone = idx < stageIndex
+                    val isCurrent = idx == stageIndex
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                when {
+                                    isCurrent -> primaryAccent.copy(alpha = 0.16f)
+                                    isDone -> Color(0xFF10B981).copy(alpha = 0.12f)
+                                    else -> Color(0xFF1F2937).copy(alpha = 0.5f)
+                                }
+                            )
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        if (isDone) {
+                            Icon(
+                                imageVector = Icons.Filled.CheckCircle,
+                                contentDescription = null,
+                                tint = Color(0xFF10B981),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        } else if (isCurrent) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = primaryAccent
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF374151))
+                            )
+                        }
+                        Text(
+                            text = stepLabel,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontWeight = if (isCurrent || isDone) FontWeight.Bold else FontWeight.Normal
+                            ),
+                            color = when {
+                                isDone -> Color(0xFF34D399)
+                                isCurrent -> Color(0xFFEDE9E4)
+                                else -> Color(0xFFEDE9E4).copy(alpha = 0.5f)
+                            }
+                        )
+                    }
+                }
             }
         }
     }

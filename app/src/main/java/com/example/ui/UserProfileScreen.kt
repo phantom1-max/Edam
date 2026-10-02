@@ -41,37 +41,55 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.TimePickerDefaults
 import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.datastore.preferences.core.edit
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -101,6 +119,7 @@ import com.example.data.local.DailyStreakState
 import com.example.data.model.BadgeDefinition
 import com.example.data.model.BadgeDisplayItem
 import com.example.data.model.PlanTier
+import com.example.notification.DailyGoalReminderScheduler
 import com.example.notification.EdamNotificationHelper
 import com.example.ui.theme.LocalEdamThemeSpec
 import java.text.SimpleDateFormat
@@ -128,6 +147,16 @@ fun UserProfileDialog(
     onSelectCompanion: (EdamCompanionCharacter) -> Unit = {},
     onCheckInStreak: (() -> Unit)? = null,
     onToggleStreakFreeze: (() -> Unit)? = null,
+    dailyLessonGoal: Int? = null,
+    dailyLessonsCompletedToday: Int? = null,
+    onSetDailyLessonGoal: ((Int) -> Unit)? = null,
+    onRecordDailyLessonProgress: (() -> Unit)? = null,
+    dailyReminderEnabled: Boolean? = null,
+    dailyReminderHour: Int? = null,
+    dailyReminderMinute: Int? = null,
+    onToggleDailyReminder: ((Boolean) -> Unit)? = null,
+    onUpdateDailyReminderTime: ((Int, Int) -> Unit)? = null,
+    onTriggerImmediateGoalReminder: (() -> Unit)? = null,
     onTogglePushNotifications: (Boolean) -> Unit,
     onSendTestNotification: () -> Unit,
     onClose: () -> Unit
@@ -135,9 +164,36 @@ fun UserProfileDialog(
     BackHandler { onClose() }
 
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val localStreakManager = remember(context) { DailyStreakManager(context) }
     val prefsStreakState by localStreakManager.streakState.collectAsState()
     val effectiveStreak = dailyStreak ?: prefsStreakState
+
+    // Observe Jetpack DataStore for user-defined daily lesson goal, progress, and WorkManager reminder schedule
+    val dataStoreGoalAndReminderFlow = remember(context) {
+        context.edamDataStore.data.map { prefs ->
+            val todayEpoch = DailyStreakManager.currentEpochDay()
+            val storedEpoch = prefs[EdamDailyGoalDataStoreKeys.DAILY_LESSONS_EPOCH_DAY] ?: todayEpoch
+            val goal = (prefs[EdamDailyGoalDataStoreKeys.DAILY_LESSON_GOAL] ?: 3).coerceIn(1, 10)
+            val completed = if (storedEpoch == todayEpoch) {
+                (prefs[EdamDailyGoalDataStoreKeys.DAILY_LESSONS_COMPLETED_TODAY] ?: 1).coerceAtLeast(0)
+            } else {
+                0
+            }
+            val remEnabled = prefs[EdamDailyGoalDataStoreKeys.DAILY_REMINDER_ENABLED] ?: true
+            val remHour = (prefs[EdamDailyGoalDataStoreKeys.DAILY_REMINDER_HOUR] ?: 20).coerceIn(0, 23)
+            val remMin = (prefs[EdamDailyGoalDataStoreKeys.DAILY_REMINDER_MINUTE] ?: 0).coerceIn(0, 59)
+            listOf(goal, completed, if (remEnabled) 1 else 0, remHour, remMin)
+        }
+    }
+    val dataStoreSnapshot by dataStoreGoalAndReminderFlow.collectAsState(
+        initial = listOf(3, 1, 1, 20, 0)
+    )
+    val effectiveDailyGoal = (dailyLessonGoal ?: dataStoreSnapshot[0]).coerceIn(1, 10)
+    val effectiveLessonsCompletedToday = (dailyLessonsCompletedToday ?: dataStoreSnapshot[1]).coerceAtLeast(0)
+    val effectiveReminderEnabled = dailyReminderEnabled ?: (dataStoreSnapshot[2] == 1)
+    val effectiveReminderHour = (dailyReminderHour ?: dataStoreSnapshot[3]).coerceIn(0, 23)
+    val effectiveReminderMinute = (dailyReminderMinute ?: dataStoreSnapshot[4]).coerceIn(0, 59)
     val themeSpec = LocalEdamThemeSpec.current
     var activeFilter by remember { mutableStateOf(BadgeFilter.ALL) }
     var hasPermission by remember {
@@ -276,6 +332,51 @@ fun UserProfileDialog(
                         )
                     }
 
+                    // 1B-2. User-Defined Daily Lesson Goal Setting (Jetpack DataStore) & Progress Bar
+                    item(key = "daily_lesson_goal_section") {
+                        DailyLessonGoalCard(
+                            dailyLessonGoal = effectiveDailyGoal,
+                            dailyLessonsCompletedToday = effectiveLessonsCompletedToday,
+                            selectedCompanion = selectedCompanion,
+                            onUpdateDailyGoal = { newTarget ->
+                                val clamped = newTarget.coerceIn(1, 10)
+                                if (onSetDailyLessonGoal != null) {
+                                    onSetDailyLessonGoal(clamped)
+                                } else {
+                                    coroutineScope.launch {
+                                        context.edamDataStore.edit { prefs ->
+                                            prefs[EdamDailyGoalDataStoreKeys.DAILY_LESSON_GOAL] = clamped
+                                            val todayEpoch = DailyStreakManager.currentEpochDay()
+                                            if (prefs[EdamDailyGoalDataStoreKeys.DAILY_LESSONS_EPOCH_DAY] == null) {
+                                                prefs[EdamDailyGoalDataStoreKeys.DAILY_LESSONS_EPOCH_DAY] = todayEpoch
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            onLogLessonCompleted = {
+                                if (onRecordDailyLessonProgress != null) {
+                                    onRecordDailyLessonProgress()
+                                } else {
+                                    coroutineScope.launch {
+                                        val todayEpoch = DailyStreakManager.currentEpochDay()
+                                        context.edamDataStore.edit { prefs ->
+                                            val storedEpoch = prefs[EdamDailyGoalDataStoreKeys.DAILY_LESSONS_EPOCH_DAY] ?: todayEpoch
+                                            val base = if (storedEpoch == todayEpoch) {
+                                                prefs[EdamDailyGoalDataStoreKeys.DAILY_LESSONS_COMPLETED_TODAY] ?: 1
+                                            } else {
+                                                0
+                                            }
+                                            prefs[EdamDailyGoalDataStoreKeys.DAILY_LESSONS_EPOCH_DAY] = todayEpoch
+                                            prefs[EdamDailyGoalDataStoreKeys.DAILY_LESSONS_COMPLETED_TODAY] = base + 1
+                                        }
+                                        localStreakManager.recordStudyActivity(xpEarned = 25)
+                                    }
+                                }
+                            }
+                        )
+                    }
+
                     // 1C. Animated Edam & Companion Roster Selector
                     item(key = "companion_roster_card") {
                         EdamCompanionRosterCard(
@@ -284,12 +385,91 @@ fun UserProfileDialog(
                         )
                     }
 
-                    // 2. Push Notifications Control Card
+                    // 2. Push Notifications & WorkManager Daily Goal Reminder Scheduler Card
                     item(key = "notifications_card") {
                         ProfileNotificationCard(
                             pushNotificationsEnabled = pushNotificationsEnabled,
                             hasPermission = hasPermission,
+                            dailyReminderEnabled = effectiveReminderEnabled,
+                            dailyReminderHour = effectiveReminderHour,
+                            dailyReminderMinute = effectiveReminderMinute,
+                            dailyLessonGoal = effectiveDailyGoal,
+                            dailyLessonsCompletedToday = effectiveLessonsCompletedToday,
                             onTogglePush = onTogglePushNotifications,
+                            onToggleDailyReminder = { enabled ->
+                                if (onToggleDailyReminder != null) {
+                                    onToggleDailyReminder(enabled)
+                                } else {
+                                    coroutineScope.launch {
+                                        context.edamDataStore.edit { prefs ->
+                                            prefs[EdamDailyGoalDataStoreKeys.DAILY_REMINDER_ENABLED] = enabled
+                                        }
+                                        try {
+                                            if (enabled) {
+                                                DailyGoalReminderScheduler.scheduleDailyGoalReminder(
+                                                    context = context,
+                                                    hour24 = effectiveReminderHour,
+                                                    minute = effectiveReminderMinute,
+                                                    dailyGoal = effectiveDailyGoal
+                                                )
+                                            } else {
+                                                DailyGoalReminderScheduler.cancelDailyGoalReminder(context)
+                                            }
+                                        } catch (_: Exception) {
+                                        }
+                                    }
+                                }
+                            },
+                            onUpdateReminderTime = { hour24, minute ->
+                                if (onUpdateDailyReminderTime != null) {
+                                    onUpdateDailyReminderTime(hour24, minute)
+                                } else {
+                                    coroutineScope.launch {
+                                        context.edamDataStore.edit { prefs ->
+                                            prefs[EdamDailyGoalDataStoreKeys.DAILY_REMINDER_HOUR] = hour24.coerceIn(0, 23)
+                                            prefs[EdamDailyGoalDataStoreKeys.DAILY_REMINDER_MINUTE] = minute.coerceIn(0, 59)
+                                            prefs[EdamDailyGoalDataStoreKeys.DAILY_REMINDER_ENABLED] = true
+                                        }
+                                        try {
+                                            DailyGoalReminderScheduler.scheduleDailyGoalReminder(
+                                                context = context,
+                                                hour24 = hour24,
+                                                minute = minute,
+                                                dailyGoal = effectiveDailyGoal
+                                            )
+                                        } catch (_: Exception) {
+                                        }
+                                    }
+                                }
+                            },
+                            onTriggerDailyGoalAlertNow = {
+                                if (!hasPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                } else if (onTriggerImmediateGoalReminder != null) {
+                                    onTriggerImmediateGoalReminder()
+                                } else {
+                                    val timeLabel = DailyGoalReminderScheduler.formatTime12Hour(
+                                        effectiveReminderHour,
+                                        effectiveReminderMinute
+                                    )
+                                    EdamNotificationHelper.sendDailyGoalReminderNotification(
+                                        context = context,
+                                        completedToday = effectiveLessonsCompletedToday,
+                                        dailyGoal = effectiveDailyGoal,
+                                        currentStreak = effectiveStreak.currentStreak,
+                                        scheduledTimeLabel = timeLabel
+                                    )
+                                    try {
+                                        DailyGoalReminderScheduler.triggerImmediateGoalReminderWork(
+                                            context = context,
+                                            hour24 = effectiveReminderHour,
+                                            minute = effectiveReminderMinute,
+                                            dailyGoal = effectiveDailyGoal
+                                        )
+                                    } catch (_: Exception) {
+                                    }
+                                }
+                            },
                             onRequestPermission = {
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                     permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -1035,21 +1215,139 @@ private fun ProfileStatPill(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 private fun ProfileNotificationCard(
     pushNotificationsEnabled: Boolean,
     hasPermission: Boolean,
+    dailyReminderEnabled: Boolean = true,
+    dailyReminderHour: Int = 20,
+    dailyReminderMinute: Int = 0,
+    dailyLessonGoal: Int = 3,
+    dailyLessonsCompletedToday: Int = 1,
     onTogglePush: (Boolean) -> Unit,
+    onToggleDailyReminder: (Boolean) -> Unit = {},
+    onUpdateReminderTime: (Int, Int) -> Unit = { _, _ -> },
+    onTriggerDailyGoalAlertNow: () -> Unit = {},
     onRequestPermission: () -> Unit,
     onSendTest: () -> Unit
 ) {
     val themeSpec = LocalEdamThemeSpec.current
+    var showTimePickerModal by remember { mutableStateOf(false) }
+
+    val formattedReminderTime = remember(dailyReminderHour, dailyReminderMinute) {
+        DailyGoalReminderScheduler.formatTime12Hour(dailyReminderHour, dailyReminderMinute)
+    }
+    val nextAlertCountdown = remember(dailyReminderHour, dailyReminderMinute, dailyReminderEnabled) {
+        if (dailyReminderEnabled) {
+            val delayMs = DailyGoalReminderScheduler.computeInitialDelayMillis(
+                targetHour24 = dailyReminderHour,
+                targetMinute = dailyReminderMinute
+            )
+            DailyGoalReminderScheduler.formatDelayCountdown(delayMs)
+        } else {
+            "WorkManager daily goal schedule paused"
+        }
+    }
+
+    if (showTimePickerModal) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = dailyReminderHour.coerceIn(0, 23),
+            initialMinute = dailyReminderMinute.coerceIn(0, 59),
+            is24Hour = false
+        )
+        Dialog(onDismissRequest = { showTimePickerModal = false }) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("custom_time_picker_dialog"),
+                shape = RoundedCornerShape(24.dp),
+                color = Color(0xFF111827),
+                border = BorderStroke(1.5.dp, Color(0xFFF59E0B))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Schedule,
+                            contentDescription = null,
+                            tint = Color(0xFFF59E0B)
+                        )
+                        Text(
+                            text = "Set Daily Goal Alert Time",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Color(0xFFEDE9E4)
+                        )
+                    }
+                    Text(
+                        text = "WorkManager will alert you every day at this time to finish your $dailyLessonGoal-lesson target.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFEDE9E4).copy(alpha = 0.78f),
+                        textAlign = TextAlign.Center
+                    )
+
+                    TimePicker(
+                        state = timePickerState,
+                        colors = TimePickerDefaults.colors(
+                            clockDialColor = Color(0xFF1F2937),
+                            selectorColor = Color(0xFFF59E0B),
+                            containerColor = Color(0xFF111827),
+                            periodSelectorSelectedContainerColor = Color(0xFFF59E0B),
+                            periodSelectorSelectedContentColor = Color(0xFF111827),
+                            timeSelectorSelectedContainerColor = Color(0xFFF59E0B).copy(alpha = 0.22f),
+                            timeSelectorSelectedContentColor = Color(0xFFFBBF24),
+                            timeSelectorUnselectedContainerColor = Color(0xFF1F2937),
+                            timeSelectorUnselectedContentColor = Color(0xFFEDE9E4)
+                        )
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = { showTimePickerModal = false },
+                            modifier = Modifier.testTag("cancel_time_picker_button")
+                        ) {
+                            Text("Cancel", color = Color(0xFFEDE9E4).copy(alpha = 0.75f))
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                onUpdateReminderTime(timePickerState.hour, timePickerState.minute)
+                                showTimePickerModal = false
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFF59E0B),
+                                contentColor = Color(0xFF111827)
+                            ),
+                            modifier = Modifier.testTag("confirm_time_picker_button")
+                        ) {
+                            Text(
+                                text = "Schedule via WorkManager",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("profile_notification_card"),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(themeSpec.borderWidth, MaterialTheme.colorScheme.outlineVariant)
     ) {
@@ -1057,7 +1355,7 @@ private fun ProfileNotificationCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1125,7 +1423,191 @@ private fun ProfileNotificationCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            // Permission Request or Test Notification Button
+            // WorkManager Scheduled Daily Goal Reminder Panel
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("workmanager_daily_reminder_panel"),
+                shape = RoundedCornerShape(18.dp),
+                color = Color(0xFF111827),
+                border = BorderStroke(
+                    width = 1.dp,
+                    color = if (dailyReminderEnabled && pushNotificationsEnabled) {
+                        Color(0xFFF59E0B).copy(alpha = 0.7f)
+                    } else {
+                        Color(0xFF374151)
+                    }
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Schedule,
+                                contentDescription = null,
+                                tint = Color(0xFFF59E0B),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Column {
+                                Text(
+                                    text = "Daily Goal Reminder (WorkManager)",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold),
+                                    color = Color(0xFFEDE9E4)
+                                )
+                                Text(
+                                    text = nextAlertCountdown,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp
+                                    ),
+                                    color = if (dailyReminderEnabled && pushNotificationsEnabled) {
+                                        Color(0xFF34D399)
+                                    } else {
+                                        Color(0xFFEDE9E4).copy(alpha = 0.6f)
+                                    },
+                                    modifier = Modifier.testTag("workmanager_countdown_text")
+                                )
+                            }
+                        }
+
+                        Switch(
+                            checked = dailyReminderEnabled && pushNotificationsEnabled,
+                            onCheckedChange = { onToggleDailyReminder(it) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color(0xFF111827),
+                                checkedTrackColor = Color(0xFFF59E0B)
+                            ),
+                            modifier = Modifier.testTag("daily_reminder_workmanager_switch")
+                        )
+                    }
+
+                    // Active Scheduled Time Row + Custom Time Picker Launcher
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Scheduled Alert Time",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFFEDE9E4).copy(alpha = 0.7f)
+                            )
+                            Text(
+                                text = formattedReminderTime,
+                                style = MaterialTheme.typography.headlineSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.ExtraBold
+                                ),
+                                color = Color(0xFFFBBF24),
+                                modifier = Modifier.testTag("daily_reminder_time_badge")
+                            )
+                        }
+
+                        Button(
+                            onClick = { showTimePickerModal = true },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFF59E0B),
+                                contentColor = Color(0xFF111827)
+                            ),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("pick_custom_reminder_time_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Schedule,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Choose Time",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
+                            )
+                        }
+                    }
+
+                    // Quick Time Presets
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val timePresets = listOf(
+                            Triple(8, 0, "08:00 AM · Morning"),
+                            Triple(12, 30, "12:30 PM · Midday"),
+                            Triple(18, 0, "06:00 PM · Evening"),
+                            Triple(20, 0, "08:00 PM · Night"),
+                            Triple(21, 30, "09:30 PM · Late")
+                        )
+                        timePresets.forEach { (presetHour, presetMinute, label) ->
+                            val isSelected = dailyReminderHour == presetHour && dailyReminderMinute == presetMinute
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { onUpdateReminderTime(presetHour, presetMinute) },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium
+                                        )
+                                    )
+                                },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    containerColor = Color(0xFF1F2937),
+                                    labelColor = Color(0xFFEDE9E4),
+                                    selectedContainerColor = Color(0xFFF59E0B),
+                                    selectedLabelColor = Color(0xFF111827)
+                                ),
+                                modifier = Modifier.testTag("reminder_preset_chip_${presetHour}_${presetMinute}")
+                            )
+                        }
+                    }
+
+                    // Trigger WorkManager Daily Goal Reminder Now Button
+                    OutlinedButton(
+                        onClick = onTriggerDailyGoalAlertNow,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color(0xFFF59E0B)),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = Color(0xFFFBBF24)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .minimumInteractiveComponentSize()
+                            .testTag("trigger_daily_goal_reminder_now_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.NotificationsActive,
+                            contentDescription = null,
+                            tint = Color(0xFFFBBF24),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Send Daily Goal Alert Now ($dailyLessonsCompletedToday/$dailyLessonGoal Lessons)",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                }
+            }
+
+            // Permission Request or Test Milestone Notification Button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1404,6 +1886,391 @@ private fun BadgeCardItem(
                                 .background(categoryColor)
                         )
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * User-defined Daily Lesson Goal Setting Card backed by Jetpack DataStore (`edamDataStore`),
+ * featuring an animated progress bar showing how close the user is to their daily target.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun DailyLessonGoalCard(
+    dailyLessonGoal: Int,
+    dailyLessonsCompletedToday: Int,
+    selectedCompanion: EdamCompanionCharacter = EdamCompanionCharacter.EDAM,
+    onUpdateDailyGoal: (Int) -> Unit,
+    onLogLessonCompleted: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val themeSpec = LocalEdamThemeSpec.current
+    val safeGoal = dailyLessonGoal.coerceIn(1, 10)
+    val safeCompleted = dailyLessonsCompletedToday.coerceAtLeast(0)
+    val rawProgress = (safeCompleted.toFloat() / safeGoal.toFloat()).coerceIn(0f, 1f)
+    val animatedProgress by animateFloatAsState(
+        targetValue = rawProgress,
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 260f),
+        label = "daily_lesson_goal_progress_anim"
+    )
+    val progressPct = (rawProgress * 100).toInt().coerceIn(0, 100)
+    val remainingLessons = (safeGoal - safeCompleted).coerceAtLeast(0)
+    val isGoalReached = safeCompleted >= safeGoal
+
+    val accentColor by animateColorAsState(
+        targetValue = if (isGoalReached) Color(0xFF10B981) else Color(0xFFF59E0B),
+        label = "daily_goal_accent"
+    )
+
+    val paceLabel = when {
+        safeGoal <= 2 -> "Casual Pace"
+        safeGoal <= 4 -> "Regular Pace"
+        safeGoal <= 6 -> "Serious Pace"
+        safeGoal <= 8 -> "Intense Pace"
+        else -> "Grandmaster Pace"
+    }
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("daily_lesson_goal_card"),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF111827),
+        border = BorderStroke(
+            width = if (themeSpec.isHighContrast) 2.dp else 1.5.dp,
+            color = accentColor.copy(alpha = 0.75f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF1F2937),
+                            Color(0xFF111827)
+                        )
+                    )
+                )
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // 1. Header Row with Edam Mascot & DataStore Badge
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    EdamMascot(
+                        expression = if (isGoalReached) EdamExpression.SUCCESS else EdamExpression.HAPPY,
+                        character = selectedCompanion,
+                        size = 48.dp,
+                        showTablet = true
+                    )
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Flag,
+                                contentDescription = null,
+                                tint = accentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "Daily Lesson Goal",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                color = Color(0xFFEDE9E4)
+                            )
+                        }
+                        Text(
+                            text = "$paceLabel · Target: $safeGoal ${if (safeGoal == 1) "lesson" else "lessons"}/day",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFEDE9E4).copy(alpha = 0.76f)
+                        )
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = accentColor.copy(alpha = 0.16f),
+                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Storage,
+                            contentDescription = null,
+                            tint = accentColor,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = "DataStore",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp
+                            ),
+                            color = accentColor
+                        )
+                    }
+                }
+            }
+
+            // 2. Daily Target Progress Bar Section
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = Color(0xFF1F2937).copy(alpha = 0.9f),
+                border = BorderStroke(1.dp, Color(0xFFEDE9E4).copy(alpha = 0.12f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "$safeCompleted of $safeGoal Lessons Completed Today",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFFEDE9E4),
+                            modifier = Modifier.testTag("daily_lesson_goal_status_text")
+                        )
+                        Text(
+                            text = "$progressPct%",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.ExtraBold
+                            ),
+                            color = accentColor,
+                            modifier = Modifier.testTag("daily_lesson_goal_percentage_text")
+                        )
+                    }
+
+                    // Material 3 LinearProgressIndicator + custom gradient track
+                    LinearProgressIndicator(
+                        progress = { animatedProgress },
+                        color = accentColor,
+                        trackColor = Color(0xFF374151),
+                        strokeCap = StrokeCap.Round,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(12.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .testTag("daily_lesson_goal_progress_bar")
+                    )
+
+                    // Segmented lesson slots showing each lesson in the user's daily target
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        for (slot in 1..safeGoal) {
+                            val isSlotCompleted = slot <= safeCompleted
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(
+                                        if (isSlotCompleted) {
+                                            accentColor
+                                        } else {
+                                            Color(0xFF374151).copy(alpha = 0.7f)
+                                        }
+                                    )
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = if (isGoalReached) {
+                            "🎉 Daily lesson target reached! ${selectedCompanion.displayName} is celebrating your consistency."
+                        } else {
+                            "$remainingLessons more ${if (remainingLessons == 1) "lesson" else "lessons"} needed today to hit your $safeGoal-lesson target!"
+                        },
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                        color = if (isGoalReached) Color(0xFF34D399) else Color(0xFFFBBF24)
+                    )
+                }
+            }
+
+            // 3. User-Defined Daily Goal Controls (Stepper + Slider + Preset Chips)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Customize Daily Target",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFFEDE9E4)
+                        )
+                        Text(
+                            text = "Saved automatically to Jetpack Preferences DataStore",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = Color(0xFFEDE9E4).copy(alpha = 0.65f)
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        IconButton(
+                            onClick = { if (safeGoal > 1) onUpdateDailyGoal(safeGoal - 1) },
+                            enabled = safeGoal > 1,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF1F2937))
+                                .testTag("daily_goal_decrement_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Remove,
+                                contentDescription = "Decrease daily lesson goal",
+                                tint = Color(0xFFEDE9E4)
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = accentColor.copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, accentColor)
+                        ) {
+                            Text(
+                                text = "$safeGoal / day",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.ExtraBold
+                                ),
+                                color = Color(0xFFEDE9E4),
+                                modifier = Modifier
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .testTag("daily_goal_value_badge")
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { if (safeGoal < 10) onUpdateDailyGoal(safeGoal + 1) },
+                            enabled = safeGoal < 10,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF1F2937))
+                                .testTag("daily_goal_increment_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = "Increase daily lesson goal",
+                                tint = Color(0xFFEDE9E4)
+                            )
+                        }
+                    }
+                }
+
+                Slider(
+                    value = safeGoal.toFloat(),
+                    onValueChange = { onUpdateDailyGoal(it.toInt().coerceIn(1, 10)) },
+                    valueRange = 1f..10f,
+                    steps = 8,
+                    colors = SliderDefaults.colors(
+                        thumbColor = accentColor,
+                        activeTrackColor = accentColor,
+                        inactiveTrackColor = Color(0xFF374151)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("daily_goal_slider")
+                )
+
+                // Quick Preset Chips (1, 3, 5, 7, 10 lessons)
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val goalPresets = listOf(
+                        Pair(1, "1 · Casual"),
+                        Pair(3, "3 · Regular"),
+                        Pair(5, "5 · Serious"),
+                        Pair(7, "7 · Intense"),
+                        Pair(10, "10 · GM")
+                    )
+                    goalPresets.forEach { (presetCount, label) ->
+                        val isSelected = safeGoal == presetCount
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { onUpdateDailyGoal(presetCount) },
+                            label = {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium
+                                    )
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = Color(0xFF1F2937),
+                                labelColor = Color(0xFFEDE9E4),
+                                selectedContainerColor = accentColor,
+                                selectedLabelColor = Color(0xFF111827)
+                            ),
+                            modifier = Modifier.testTag("daily_goal_preset_$presetCount")
+                        )
+                    }
+                }
+            }
+
+            // 4. Interactive Action to Log a Completed Lesson Today
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = onLogLessonCompleted,
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = accentColor,
+                        contentColor = Color(0xFF111827)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .minimumInteractiveComponentSize()
+                        .testTag("daily_goal_log_lesson_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (isGoalReached) {
+                            "Bonus Lesson Completed (+25 XP)"
+                        } else {
+                            "Log Completed Lesson (+1 toward $safeGoal/day Goal)"
+                        },
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
+                    )
                 }
             }
         }

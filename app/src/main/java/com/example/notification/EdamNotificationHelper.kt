@@ -21,9 +21,15 @@ object EdamNotificationHelper {
     private const val CHANNEL_NAME = "Course Milestones & Badges"
     private const val CHANNEL_DESC = "Notifications for course completion milestones, newly earned badges, and study goals."
 
+    const val DAILY_GOAL_CHANNEL_ID = "edam_daily_goal_reminders"
+    private const val DAILY_GOAL_CHANNEL_NAME = "Daily Learning Goal Reminders"
+    private const val DAILY_GOAL_CHANNEL_DESC = "Scheduled WorkManager reminders alerting you to complete your daily Edam learning target."
+    private const val DAILY_GOAL_NOTIFICATION_ID = 7788
+
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            val milestoneChannel = NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
                 NotificationManager.IMPORTANCE_HIGH
@@ -31,8 +37,16 @@ object EdamNotificationHelper {
                 description = CHANNEL_DESC
                 enableVibration(true)
             }
-            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            manager?.createNotificationChannel(channel)
+            val dailyGoalChannel = NotificationChannel(
+                DAILY_GOAL_CHANNEL_ID,
+                DAILY_GOAL_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = DAILY_GOAL_CHANNEL_DESC
+                enableVibration(true)
+            }
+            manager?.createNotificationChannel(milestoneChannel)
+            manager?.createNotificationChannel(dailyGoalChannel)
         }
     }
 
@@ -125,6 +139,67 @@ object EdamNotificationHelper {
             NotificationManagerCompat.from(context).notify(9999, notification)
         } catch (e: SecurityException) {
             Log.e("EdamNotificationHelper", "SecurityException posting notification", e)
+        }
+    }
+
+    fun sendDailyGoalReminderNotification(
+        context: Context,
+        completedToday: Int,
+        dailyGoal: Int,
+        currentStreak: Int,
+        scheduledTimeLabel: String
+    ) {
+        createNotificationChannel(context)
+
+        if (!hasNotificationPermission(context)) {
+            Log.w("EdamNotificationHelper", "POST_NOTIFICATIONS permission not granted; skipping daily goal reminder.")
+            return
+        }
+
+        val safeGoal = dailyGoal.coerceAtLeast(1)
+        val safeCompleted = completedToday.coerceAtLeast(0)
+        val remaining = (safeGoal - safeCompleted).coerceAtLeast(0)
+        val isGoalMet = safeCompleted >= safeGoal
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("open_daily_goal_from_notification", true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            DAILY_GOAL_NOTIFICATION_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+        )
+
+        val title = if (isGoalMet) {
+            "🔥 Daily Goal Complete ($safeCompleted/$safeGoal Lessons)!"
+        } else {
+            "⏰ Edam Daily Goal Alert ($scheduledTimeLabel): $remaining ${if (remaining == 1) "Lesson" else "Lessons"} Left"
+        }
+
+        val bodyText = if (isGoalMet) {
+            "Awesome job! You reached your $safeGoal-lesson daily goal and protected your $currentStreak-day learning streak."
+        } else {
+            "You've completed $safeCompleted of $safeGoal lessons today. Jump into Edam now to finish your remaining $remaining ${if (remaining == 1) "lesson" else "lessons"} and keep your $currentStreak-day streak burning!"
+        }
+
+        val notification = NotificationCompat.Builder(context, DAILY_GOAL_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification_badge)
+            .setContentTitle(title)
+            .setContentText(bodyText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bodyText))
+            .setProgress(safeGoal, safeCompleted.coerceAtMost(safeGoal), false)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(context).notify(DAILY_GOAL_NOTIFICATION_ID, notification)
+        } catch (e: SecurityException) {
+            Log.e("EdamNotificationHelper", "SecurityException posting daily goal reminder", e)
         }
     }
 }

@@ -3,6 +3,7 @@ package com.example.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -11,6 +12,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -53,6 +55,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -73,8 +76,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -491,38 +497,107 @@ private fun GeneratingProgressCard(
         ),
         label = "scale"
     )
+    val orbitAngle by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "studio_orbit_angle"
+    )
+    val shimmerProgress by infiniteTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.92f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "studio_shimmer_progress"
+    )
 
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("generating_progress_card"),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF111827),
+        border = BorderStroke(1.5.dp, Color(0xFFF59E0B))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF1F2937),
+                            Color(0xFF111827)
+                        )
+                    )
+                )
+                .padding(22.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
-                modifier = Modifier.scale(pulseScale),
+                modifier = Modifier.size(126.dp),
                 contentAlignment = Alignment.Center
             ) {
-                EdamMascot(
-                    expression = EdamExpression.WORKING,
-                    character = EdamCompanionCharacter.EDAM,
-                    size = 86.dp,
-                    showTablet = true
-                )
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val strokePx = 4.dp.toPx()
+                    val outerRadius = (size.minDimension - strokePx * 2) / 2f
+                    val innerRadius = outerRadius * 0.78f
+
+                    drawCircle(
+                        color = Color(0xFFF59E0B).copy(alpha = 0.2f),
+                        radius = outerRadius,
+                        style = Stroke(width = strokePx)
+                    )
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color(0xFFF59E0B),
+                                Color(0xFFFBBF24),
+                                Color.Transparent
+                            )
+                        ),
+                        startAngle = orbitAngle,
+                        sweepAngle = 200f,
+                        useCenter = false,
+                        style = Stroke(width = strokePx, cap = StrokeCap.Round)
+                    )
+                    drawArc(
+                        color = Color(0xFF10B981).copy(alpha = 0.78f),
+                        startAngle = -orbitAngle * 1.25f,
+                        sweepAngle = 115f,
+                        useCenter = false,
+                        topLeft = Offset(
+                            (size.width - innerRadius * 2) / 2f,
+                            (size.height - innerRadius * 2) / 2f
+                        ),
+                        size = androidx.compose.ui.geometry.Size(innerRadius * 2, innerRadius * 2),
+                        style = Stroke(width = 2.5.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+
+                Box(
+                    modifier = Modifier.scale(pulseScale),
+                    contentAlignment = Alignment.Center
+                ) {
+                    EdamMascot(
+                        expression = EdamExpression.WORKING,
+                        character = EdamCompanionCharacter.EDAM,
+                        size = 82.dp,
+                        showTablet = true
+                    )
+                }
             }
 
             Text(
                 text = statusMessage.ifBlank { "Edam is designing your course outline..." },
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                color = Color(0xFFEDE9E4),
                 textAlign = TextAlign.Center
             )
 
@@ -530,16 +605,22 @@ private fun GeneratingProgressCard(
                 Text(
                     text = "Current Step: $generationStep",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = Color(0xFFFBBF24),
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center
                 )
             }
 
-            CircularProgressIndicator(
-                modifier = Modifier.size(24.dp),
-                color = MaterialTheme.colorScheme.primary,
-                strokeWidth = 2.5.dp
+            LinearProgressIndicator(
+                progress = { shimmerProgress },
+                color = Color(0xFFF59E0B),
+                trackColor = Color(0xFF374151),
+                strokeCap = StrokeCap.Round,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .testTag("studio_generating_progress_bar")
             )
         }
     }
