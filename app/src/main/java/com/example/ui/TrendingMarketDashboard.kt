@@ -121,8 +121,8 @@ fun TrendingCoursesMarketDashboard(
     timeframe: MarketTimeframe,
     chartType: MarketChartType,
     filterTab: MarketFilterTab,
-    searchQuery: String,
-    bookmarkedTickerIds: Set<String>,
+    searchQuery: String = "",
+    bookmarkedTickerIds: Set<String> = emptySet(),
     isLiveFeedActive: Boolean,
     globalSummary: MarketGlobalSummary,
     isExpanded: Boolean,
@@ -130,8 +130,8 @@ fun TrendingCoursesMarketDashboard(
     onSelectTimeframe: (MarketTimeframe) -> Unit,
     onSelectChartType: (MarketChartType) -> Unit,
     onSelectFilterTab: (MarketFilterTab) -> Unit,
-    onSearchQueryChange: (String) -> Unit,
-    onToggleBookmarkTicker: (String) -> Unit,
+    onSearchQueryChange: (String) -> Unit = {},
+    onToggleBookmarkTicker: (String) -> Unit = {},
     onToggleLiveFeed: () -> Unit,
     onLaunchTickerCourse: (TrendingCourseTicker) -> Unit,
     modifier: Modifier = Modifier
@@ -688,8 +688,7 @@ private fun SelectedTickerChartTerminal(
                 ) {
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),

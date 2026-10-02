@@ -2,12 +2,17 @@ package com.example.data.remote
 
 import com.example.BuildConfig
 import com.example.data.model.Course
+import com.example.data.model.CourseOutline
 import com.example.data.model.CourseUnit
 import com.example.data.model.EdamJsonParser
 import com.example.data.model.LessonContent
+import com.example.data.model.LessonOutlineItem
 import com.example.data.model.LessonSummary
+import com.example.data.model.UnitOutlineItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
@@ -133,6 +138,294 @@ Do NOT write markdown.
             fallbackLevel = level,
             fallbackGoal = goal
         )
+    }
+
+    suspend fun generateCourseOutline(
+        topic: String,
+        level: String,
+        goal: String,
+        focusArea: String,
+        unitCount: Int = 5
+    ): CourseOutline = withContext(Dispatchers.IO) {
+        val cleanTopic = topic.trim().ifBlank { "Modern Financial Intelligence" }
+        val cleanLevel = level.trim().ifBlank { "Intermediate" }
+        val cleanGoal = goal.trim().ifBlank { "Master practical concepts and hands-on decision making" }
+        val cleanFocus = focusArea.trim().ifBlank { "Applied Strategy" }
+        val units = unitCount.coerceIn(3, 8)
+
+        val prompt = """
+You are Edam, an educational curriculum architect powered by Gemini.
+
+Create an exhaustive, structured course syllabus and learning outline for:
+Topic: $cleanTopic
+Level: $cleanLevel
+Goal: $cleanGoal
+Focus Specialization: $cleanFocus
+Requested Module Units: $units
+
+Return ONLY JSON conforming to schema.
+Create $units distinct sequential units progressing from foundational to advanced mastery.
+Each unit must contain 3 to 4 lessons with estimatedMinutes (10-25), xpReward (30-60), and summary.
+Include 4 to 6 measurable outcome statements.
+Do NOT write markdown.
+""".trimIndent()
+
+        try {
+            val rawResponseJson = executeAiRequest(
+                action = "course_outline",
+                prompt = prompt,
+                responseSchema = buildOutlineSchema()
+            )
+            parseCourseOutlineJson(
+                rawJson = rawResponseJson,
+                fallbackTopic = cleanTopic,
+                fallbackLevel = cleanLevel,
+                fallbackGoal = cleanGoal,
+                fallbackFocus = cleanFocus,
+                targetUnits = units
+            )
+        } catch (_: Exception) {
+            buildStructuredFallbackOutline(
+                topic = cleanTopic,
+                level = cleanLevel,
+                goal = cleanGoal,
+                focusArea = cleanFocus,
+                unitCount = units
+            )
+        }
+    }
+
+    private fun parseCourseOutlineJson(
+        rawJson: String,
+        fallbackTopic: String,
+        fallbackLevel: String,
+        fallbackGoal: String,
+        fallbackFocus: String,
+        targetUnits: Int
+    ): CourseOutline {
+        val cleaned = EdamJsonParser.stripMarkdownFences(rawJson)
+        val obj = JSONObject(cleaned)
+
+        val title = obj.optString("title").ifBlank { fallbackTopic }
+        val level = obj.optString("level").ifBlank { fallbackLevel }
+        val goal = obj.optString("goal").ifBlank { fallbackGoal }
+        val focusArea = obj.optString("focusArea").ifBlank { fallbackFocus }
+        val description = obj.optString("description").ifBlank {
+            "A structured $level curriculum on $fallbackTopic focused on $fallbackFocus to achieve: $fallbackGoal."
+        }
+        val estimatedHours = obj.optInt("estimatedHours", targetUnits * 2)
+        val totalXp = obj.optInt("totalXp", targetUnits * 150)
+
+        val outcomes = mutableListOf<String>()
+        val outcomesArr = obj.optJSONArray("outcomes")
+        if (outcomesArr != null) {
+            for (i in 0 until outcomesArr.length()) {
+                val item = outcomesArr.optString(i).trim()
+                if (item.isNotBlank()) outcomes.add(item)
+            }
+        }
+        if (outcomes.isEmpty()) {
+            outcomes.add("Understand the theoretical fundamentals of $fallbackTopic")
+            outcomes.add("Apply core analytical methodologies in real-world scenarios")
+            outcomes.add("Develop critical problem-solving and diagnostic skills")
+            outcomes.add("Demonstrate competency through interactive quiz assessments")
+        }
+
+        val unitsList = mutableListOf<UnitOutlineItem>()
+        val unitsArr = obj.optJSONArray("units")
+        if (unitsArr != null) {
+            for (i in 0 until unitsArr.length()) {
+                val uObj = unitsArr.optJSONObject(i) ?: continue
+                val uId = uObj.optString("id").ifBlank { "unit_${i + 1}" }
+                val uTitle = uObj.optString("title").ifBlank { "Unit ${i + 1}: Core Modules" }
+                val uDesc = uObj.optString("description").ifBlank { "Essential principles and practical lessons." }
+
+                val lessonsList = mutableListOf<LessonOutlineItem>()
+                val lessonsArr = uObj.optJSONArray("lessons")
+                if (lessonsArr != null) {
+                    for (j in 0 until lessonsArr.length()) {
+                        val lObj = lessonsArr.optJSONObject(j) ?: continue
+                        val lId = lObj.optString("id").ifBlank { "lesson_${i + 1}_${j + 1}" }
+                        val lTitle = lObj.optString("title").ifBlank { "Lesson ${j + 1}" }
+                        val lSummary = lObj.optString("summary").ifBlank { "Key concepts and quiz exercise." }
+                        val estMin = lObj.optInt("estimatedMinutes", 15)
+                        val xp = lObj.optInt("xpReward", 50)
+                        lessonsList.add(
+                            LessonOutlineItem(
+                                id = lId,
+                                title = lTitle,
+                                summary = lSummary,
+                                estimatedMinutes = estMin,
+                                xpReward = xp
+                            )
+                        )
+                    }
+                }
+                if (lessonsList.isNotEmpty()) {
+                    unitsList.add(
+                        UnitOutlineItem(
+                            id = uId,
+                            title = uTitle,
+                            description = uDesc,
+                            lessons = lessonsList
+                        )
+                    )
+                }
+            }
+        }
+
+        return if (unitsList.isNotEmpty()) {
+            CourseOutline(
+                title = title,
+                level = level,
+                goal = goal,
+                focusArea = focusArea,
+                description = description,
+                outcomes = outcomes,
+                estimatedHours = estimatedHours,
+                totalXp = totalXp,
+                units = unitsList
+            )
+        } else {
+            buildStructuredFallbackOutline(
+                topic = fallbackTopic,
+                level = fallbackLevel,
+                goal = fallbackGoal,
+                focusArea = fallbackFocus,
+                unitCount = targetUnits
+            )
+        }
+    }
+
+    private fun buildStructuredFallbackOutline(
+        topic: String,
+        level: String,
+        goal: String,
+        focusArea: String,
+        unitCount: Int
+    ): CourseOutline {
+        val unitTitles = listOf(
+            Pair("Foundations & Core Principles", "Groundwork concepts, terminology, and foundational mental models of $topic."),
+            Pair("Mechanics & Analytical Frameworks", "Core mechanics, quantitative and qualitative analysis techniques."),
+            Pair("Applied Strategies & Real-World Systems", "Practical workflows, execution strategies, and real-world system architecture."),
+            Pair("Risk Mitigation & Diagnostic Problem Solving", "Identifying edge cases, systemic risks, and optimizing performance under stress."),
+            Pair("Advanced Specialization & Edge Dynamics", "Cutting-edge paradigms, portfolio scale, and competitive positioning."),
+            Pair("Mastery Capstone & Synthesis", "End-to-end practical execution, audit frameworks, and sustained competency.")
+        )
+
+        val actualUnitCount = unitCount.coerceIn(3, unitTitles.size)
+        val units = mutableListOf<UnitOutlineItem>()
+        var globalLessonCounter = 1
+
+        for (uIdx in 0 until actualUnitCount) {
+            val (uName, uDesc) = unitTitles[uIdx]
+            val lessons = mutableListOf<LessonOutlineItem>()
+            val lessonNames = listOf(
+                "Introduction to $uName",
+                "Deep Dive: Key Mechanics and Examples",
+                "Hands-On Application & Practical Case Study",
+                "Self-Assessment & Mastery Review"
+            )
+            for (lIdx in lessonNames.indices) {
+                val lId = "l_outline_${uIdx + 1}_${lIdx + 1}"
+                val title = "${uIdx + 1}.${lIdx + 1} ${lessonNames[lIdx]}"
+                val summary = "Explore the primary components of ${lessonNames[lIdx].lowercase()} within $topic."
+                lessons.add(
+                    LessonOutlineItem(
+                        id = lId,
+                        title = title,
+                        summary = summary,
+                        estimatedMinutes = 12 + (lIdx * 3),
+                        xpReward = 40 + (uIdx * 5),
+                        keyConcepts = listOf("$topic Basics", "Applied Framework", "Quiz Checkpoint")
+                    )
+                )
+                globalLessonCounter++
+            }
+            units.add(
+                UnitOutlineItem(
+                    id = "u_outline_${uIdx + 1}",
+                    title = "Unit ${uIdx + 1}: $uName",
+                    description = uDesc,
+                    lessons = lessons
+                )
+            )
+        }
+
+        return CourseOutline(
+            title = topic,
+            level = level,
+            goal = goal,
+            focusArea = focusArea,
+            description = "A comprehensive, structured $level curriculum designed to achieve: $goal.",
+            outcomes = listOf(
+                "Master foundational definitions, paradigms, and core principles of $topic",
+                "Apply analytical models and practical decision-making frameworks",
+                "Evaluate scenarios, troubleshoot risks, and synthesize strategic outcomes",
+                "Demonstrate verified competence through interactive checkpoint quizzes"
+            ),
+            estimatedHours = actualUnitCount * 2,
+            totalXp = units.sumOf { u -> u.lessons.sumOf { it.xpReward } },
+            units = units
+        )
+    }
+
+    private fun buildOutlineSchema(): JsonObject = buildJsonObject {
+        put("type", "OBJECT")
+        putJsonObject("properties") {
+            putJsonObject("title") { put("type", "STRING") }
+            putJsonObject("description") { put("type", "STRING") }
+            putJsonObject("level") { put("type", "STRING") }
+            putJsonObject("goal") { put("type", "STRING") }
+            putJsonObject("focusArea") { put("type", "STRING") }
+            putJsonObject("estimatedHours") { put("type", "INTEGER") }
+            putJsonObject("totalXp") { put("type", "INTEGER") }
+            putJsonObject("outcomes") {
+                put("type", "ARRAY")
+                putJsonObject("items") { put("type", "STRING") }
+            }
+            putJsonObject("units") {
+                put("type", "ARRAY")
+                putJsonObject("items") {
+                    put("type", "OBJECT")
+                    putJsonObject("properties") {
+                        putJsonObject("id") { put("type", "STRING") }
+                        putJsonObject("title") { put("type", "STRING") }
+                        putJsonObject("description") { put("type", "STRING") }
+                        putJsonObject("lessons") {
+                            put("type", "ARRAY")
+                            putJsonObject("items") {
+                                put("type", "OBJECT")
+                                putJsonObject("properties") {
+                                    putJsonObject("id") { put("type", "STRING") }
+                                    putJsonObject("title") { put("type", "STRING") }
+                                    putJsonObject("summary") { put("type", "STRING") }
+                                    putJsonObject("estimatedMinutes") { put("type", "INTEGER") }
+                                    putJsonObject("xpReward") { put("type", "INTEGER") }
+                                }
+                                putJsonArray("required") {
+                                    add("id")
+                                    add("title")
+                                    add("summary")
+                                }
+                            }
+                        }
+                    }
+                    putJsonArray("required") {
+                        add("id")
+                        add("title")
+                        add("description")
+                        add("lessons")
+                    }
+                }
+            }
+        }
+        putJsonArray("required") {
+            add("title")
+            add("description")
+            add("outcomes")
+            add("units")
+        }
     }
 
     suspend fun generateLesson(

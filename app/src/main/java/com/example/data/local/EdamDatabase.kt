@@ -35,6 +35,22 @@ data class CachedLessonEntity(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+@Entity(
+    tableName = "earned_badges",
+    primaryKeys = ["badgeId", "courseId"]
+)
+data class EarnedBadgeEntity(
+    val badgeId: String,
+    val courseId: String,
+    val courseTitle: String,
+    val badgeTitle: String,
+    val description: String,
+    val percentageRequired: Int,
+    val iconKey: String,
+    val colorCategory: String,
+    val unlockedAt: Long = System.currentTimeMillis()
+)
+
 @Dao
 interface EdamDao {
     @Query("SELECT * FROM courses ORDER BY createdAt DESC")
@@ -64,6 +80,12 @@ interface EdamDao {
     @Query("DELETE FROM courses WHERE id = :courseId")
     suspend fun deleteCourse(courseId: String)
 
+    @Query("DELETE FROM cached_lessons WHERE courseId = :courseId")
+    suspend fun deleteCachedLessonsForCourse(courseId: String)
+
+    @Query("SELECT * FROM courses ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getFirstCourse(): CourseEntity?
+
     @Query("SELECT * FROM cached_lessons WHERE courseId = :courseId AND lessonId = :lessonId LIMIT 1")
     suspend fun getCachedLesson(courseId: String, lessonId: String): CachedLessonEntity?
 
@@ -78,11 +100,93 @@ interface EdamDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCachedLessons(cachedLessons: List<CachedLessonEntity>)
+
+    @Query("SELECT * FROM earned_badges ORDER BY unlockedAt DESC")
+    fun getAllEarnedBadges(): Flow<List<EarnedBadgeEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertEarnedBadge(badge: EarnedBadgeEntity)
+
+    @Query("SELECT * FROM earned_badges WHERE badgeId = :badgeId AND courseId = :courseId LIMIT 1")
+    suspend fun getEarnedBadge(badgeId: String, courseId: String): EarnedBadgeEntity?
+
+    @Query("SELECT COUNT(*) FROM earned_badges")
+    fun observeEarnedBadgeCount(): Flow<Int>
+
+    // Screen Entity Queries
+    @Query("SELECT * FROM screens ORDER BY visitCount DESC")
+    fun getAllScreens(): Flow<List<ScreenEntity>>
+
+    @Query("SELECT * FROM screens WHERE screenId = :screenId LIMIT 1")
+    suspend fun getScreenById(screenId: String): ScreenEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertScreen(screen: ScreenEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertScreens(screens: List<ScreenEntity>)
+
+    @Query("UPDATE screens SET visitCount = visitCount + 1, lastVisitedAt = :timestamp WHERE screenId = :screenId")
+    suspend fun recordScreenVisit(screenId: String, timestamp: Long = System.currentTimeMillis())
+
+    @Query("SELECT COUNT(*) FROM screens")
+    suspend fun getScreenCount(): Int
+
+    // Competitive Leaderboard Queries
+    @Query("SELECT * FROM leaderboard_entries WHERE leagueId = :leagueId ORDER BY weeklyXp DESC")
+    fun getLeaderboardForLeague(leagueId: String): Flow<List<LeaderboardEntryEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertLeaderboardEntries(entries: List<LeaderboardEntryEntity>)
+
+    @Query("UPDATE leaderboard_entries SET weeklyXp = weeklyXp + :xpBonus, updatedAt = :timestamp WHERE isCurrentUser = 1")
+    suspend fun addXpToCurrentUser(xpBonus: Int, timestamp: Long = System.currentTimeMillis())
+
+    @Query("UPDATE leaderboard_entries SET leagueId = :newLeagueId, updatedAt = :timestamp WHERE isCurrentUser = 1")
+    suspend fun updateCurrentUserLeague(newLeagueId: String, timestamp: Long = System.currentTimeMillis())
+
+    @Query("SELECT * FROM leaderboard_entries WHERE isCurrentUser = 1 LIMIT 1")
+    suspend fun getCurrentUserLeaderboardEntry(): LeaderboardEntryEntity?
+
+    @Query("SELECT COUNT(*) FROM leaderboard_entries WHERE leagueId = :leagueId")
+    suspend fun getLeaderboardCount(leagueId: String): Int
 }
 
+@Entity(tableName = "screens")
+data class ScreenEntity(
+    @PrimaryKey val screenId: String,
+    val title: String,
+    val route: String,
+    val description: String = "",
+    val iconKey: String = "home",
+    val isEnabled: Boolean = true,
+    val visitCount: Int = 0,
+    val lastVisitedAt: Long = System.currentTimeMillis(),
+    val metadataJson: String = "{}"
+)
+
+@Entity(tableName = "leaderboard_entries")
+data class LeaderboardEntryEntity(
+    @PrimaryKey val userId: String,
+    val displayName: String,
+    val avatarColorHex: Long,
+    val avatarInitial: String,
+    val leagueId: String,
+    val weeklyXp: Int,
+    val streakDays: Int,
+    val isCurrentUser: Boolean = false,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
 @Database(
-    entities = [CourseEntity::class, CachedLessonEntity::class],
-    version = 1,
+    entities = [
+        CourseEntity::class,
+        CachedLessonEntity::class,
+        EarnedBadgeEntity::class,
+        ScreenEntity::class,
+        LeaderboardEntryEntity::class
+    ],
+    version = 3,
     exportSchema = false
 )
 abstract class EdamDatabase : RoomDatabase() {
@@ -98,7 +202,9 @@ abstract class EdamDatabase : RoomDatabase() {
                     context.applicationContext,
                     EdamDatabase::class.java,
                     "edam_learning.db"
-                ).build()
+                )
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }

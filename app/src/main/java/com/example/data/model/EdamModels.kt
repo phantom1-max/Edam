@@ -302,6 +302,11 @@ object EdamJsonParser {
 
     fun stripMarkdownFences(raw: String): String {
         var text = raw.trim()
+        val firstBrace = text.indexOf('{')
+        val lastBrace = text.lastIndexOf('}')
+        if (firstBrace != -1 && lastBrace != -1 && lastBrace > firstBrace) {
+            return text.substring(firstBrace, lastBrace + 1).trim()
+        }
         if (text.startsWith("```")) {
             val firstNewline = text.indexOf('\n')
             if (firstNewline != -1) {

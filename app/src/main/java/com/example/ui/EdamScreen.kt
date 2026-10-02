@@ -50,6 +50,8 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.School
@@ -88,6 +90,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -106,13 +109,18 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.credentials.CredentialManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
+import com.example.data.local.DailyStreakState
+import com.example.data.local.ScreenEntity
+import com.example.data.model.ChessAndFlashcardCatalog
 import com.example.data.model.Course
 import com.example.data.model.CourseUnit
+import com.example.data.model.LeagueTier
 import com.example.data.model.LearningSection
 import com.example.data.model.LessonContent
 import com.example.data.model.LessonSummary
 import com.example.data.model.PlanTier
 import com.example.data.model.PracticeQuestion
+import com.example.data.model.ShareMarketCatalog
 import com.example.ui.theme.EdamThemeMode
 import com.example.ui.theme.LocalEdamThemeSpec
 import kotlinx.coroutines.launch
@@ -135,22 +143,20 @@ fun EdamApp(
     val secondaryGlow = MaterialTheme.colorScheme.secondary.copy(alpha = glowAlpha)
     val bgColor = MaterialTheme.colorScheme.background
 
-    when {
-        uiState.lessonModalState != null -> {
-            BackHandler {
-                viewModel.closeLesson()
-            }
-        }
-        uiState.showSettingsModal -> {
-            BackHandler {
-                viewModel.toggleSettingsModal(false)
-            }
-        }
-        uiState.showSavedCoursesSheet -> {
-            BackHandler {
-                viewModel.toggleSavedCoursesSheet(false)
-            }
-        }
+    BackHandler(enabled = uiState.currentDestination != AppScreenDestination.HOME) {
+        viewModel.navigateBackToHome()
+    }
+    BackHandler(enabled = uiState.lessonModalState != null) {
+        viewModel.closeLesson()
+    }
+    BackHandler(enabled = uiState.showSettingsModal) {
+        viewModel.toggleSettingsModal(false)
+    }
+    BackHandler(enabled = uiState.showSavedCoursesSheet) {
+        viewModel.toggleSavedCoursesSheet(false)
+    }
+    BackHandler(enabled = uiState.showProfileModal) {
+        viewModel.toggleProfileModal(false)
     }
 
     Scaffold(
@@ -196,16 +202,33 @@ fun EdamApp(
                     .widthIn(max = 1100.dp)
                     .align(Alignment.TopCenter)
             ) {
-                // Sticky Glass Navigation Bar (Theme picker moved inside Settings)
+                // Sticky Glass Navigation Bar
                 EdamNavigationBar(
                     planTier = uiState.planTier,
+                    currentDestination = uiState.currentDestination,
                     savedCoursesCount = uiState.savedCourses.size,
+                    unlockedBadgesCount = uiState.earnedBadges.size,
+                    currentUserRank = uiState.currentUserRank,
+                    selectedLeagueEmoji = uiState.selectedLeague.emoji,
+                    currentStreak = uiState.dailyStreak.currentStreak,
+                    selectedCompanion = uiState.selectedCompanion,
+                    onGoHome = {
+                        viewModel.navigateToDestination(AppScreenDestination.HOME)
+                    },
+                    onGoToStudio = {
+                        viewModel.navigateToDestination(AppScreenDestination.COURSE_STUDIO)
+                    },
+                    onGoToLeaderboard = {
+                        viewModel.navigateToDestination(AppScreenDestination.LEADERBOARD)
+                    },
                     onGoToMarket = {
+                        viewModel.navigateToDestination(AppScreenDestination.HOME)
                         coroutineScope.launch {
                             listState.animateScrollToItem(1)
                         }
                     },
                     onGoToCreate = {
+                        viewModel.navigateToDestination(AppScreenDestination.HOME)
                         coroutineScope.launch {
                             listState.animateScrollToItem(2)
                         }
@@ -213,144 +236,314 @@ fun EdamApp(
                     onOpenSavedCourses = {
                         viewModel.toggleSavedCoursesSheet(true)
                     },
+                    onOpenProfile = {
+                        viewModel.toggleProfileModal(true)
+                    },
                     onOpenSettings = {
                         viewModel.toggleSettingsModal(true)
                     },
                     modifier = Modifier
-                        .padding(horizontal = horizontalMargin, vertical = 10.dp)
+                        .padding(horizontal = horizontalMargin, vertical = 8.dp)
                 )
 
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .testTag("main_scroll_list"),
-                    contentPadding = PaddingValues(
-                        start = horizontalMargin,
-                        end = horizontalMargin,
-                        bottom = 36.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(24.dp)
-                ) {
-                    // 0: Hero section with Purple & Blue Open-Book Illustration matching theme
-                    item(key = "hero_section") {
-                        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                            EdamHeroSection(isExpanded = isExpanded)
-                            val checkpoint = uiState.resumeCheckpoint
-                            if (checkpoint != null) {
-                                ResumeLearningBanner(
-                                    checkpoint = checkpoint,
-                                    onResumeClick = viewModel::resumeFromLastCheckpoint
-                                )
-                            }
-                        }
-                    }
-
-                    // 1: Trending Courses Financial Market Dashboard (Real-Time Growth & Learner Engagement)
-                    item(key = "trending_market_section") {
-                        TrendingCoursesMarketDashboard(
-                            tickers = uiState.marketTickers,
-                            selectedTickerId = uiState.selectedTickerId,
-                            timeframe = uiState.marketTimeframe,
-                            chartType = uiState.marketChartType,
-                            filterTab = uiState.marketFilterTab,
-                            isLiveFeedActive = uiState.isMarketLiveFeedActive,
-                            globalSummary = uiState.marketGlobalSummary,
-                            isExpanded = isExpanded,
-                            onSelectTicker = viewModel::selectMarketTicker,
-                            onSelectTimeframe = viewModel::selectMarketTimeframe,
-                            onSelectChartType = viewModel::selectMarketChartType,
-                            onSelectFilterTab = viewModel::selectMarketFilterTab,
-                            onToggleLiveFeed = viewModel::toggleMarketLiveFeed,
-                            onLaunchTickerCourse = { ticker ->
-                                viewModel.launchOrSelectTickerCourse(
-                                    ticker = ticker,
-                                    onScrollToCourse = {
-                                        coroutineScope.launch {
-                                            listState.animateScrollToItem(3)
-                                        }
-                                    },
-                                    onScrollToBuilder = {
-                                        coroutineScope.launch {
-                                            listState.animateScrollToItem(2)
-                                        }
+                // ScreenEntity Quick Navigation & Telemetry Bar
+                if (uiState.allScreens.isNotEmpty()) {
+                    ScreenRegistryQuickBar(
+                        screens = uiState.allScreens,
+                        currentDestination = uiState.currentDestination,
+                        onSelectScreen = { screen ->
+                            when (screen.route) {
+                                "home" -> viewModel.navigateToDestination(AppScreenDestination.HOME)
+                                "course_studio" -> viewModel.navigateToDestination(AppScreenDestination.COURSE_STUDIO)
+                                "leaderboard" -> viewModel.navigateToDestination(AppScreenDestination.LEADERBOARD)
+                                "market" -> {
+                                    viewModel.navigateToDestination(AppScreenDestination.HOME)
+                                    coroutineScope.launch {
+                                        listState.animateScrollToItem(1)
                                     }
-                                )
+                                }
+                                "profile" -> {
+                                    viewModel.navigateToDestination(AppScreenDestination.HOME)
+                                    viewModel.toggleProfileModal(true)
+                                }
                             }
-                        )
-                    }
+                        },
+                        modifier = Modifier.padding(horizontal = horizontalMargin, vertical = 4.dp)
+                    )
+                }
 
-                    // 2: Create a Course section + Share Market Course Launcher
-                    item(key = "create_section") {
-                        CreateCourseSection(
-                            courseName = uiState.courseName,
-                            selectedLevel = uiState.level,
-                            goal = uiState.goal,
+                when (uiState.currentDestination) {
+                    AppScreenDestination.COURSE_STUDIO -> {
+                        CourseOutlineGeneratorScreen(
+                            topic = uiState.outlineTopic,
+                            level = uiState.outlineLevel,
+                            goal = uiState.outlineGoal,
+                            focusArea = uiState.outlineFocusArea,
+                            unitCount = uiState.outlineUnitCount,
+                            isGenerating = uiState.isGeneratingOutline,
+                            statusMessage = uiState.outlineStatusMessage,
+                            generationStep = uiState.outlineGenerationStep,
+                            generatedOutline = uiState.generatedOutline,
+                            errorMessage = uiState.outlineErrorMessage,
                             availableLevels = viewModel.availableLevels,
-                            isGenerating = uiState.isGeneratingCourse,
-                            statusMessage = uiState.statusMessage,
-                            onCourseNameChange = viewModel::onCourseNameChange,
-                            onLevelChange = viewModel::onLevelChange,
-                            onGoalChange = viewModel::onGoalChange,
-                            onPresetClick = viewModel::applyQuickPreset,
-                            onOpenShareMarketCourse = {
-                                viewModel.openShareMarketCourse(
-                                    onReady = {
+                            onTopicChange = viewModel::onOutlineTopicChange,
+                            onLevelChange = viewModel::onOutlineLevelChange,
+                            onGoalChange = viewModel::onOutlineGoalChange,
+                            onFocusAreaChange = viewModel::onOutlineFocusAreaChange,
+                            onUnitCountChange = viewModel::onOutlineUnitCountChange,
+                            onApplyPreset = viewModel::applyOutlinePreset,
+                            onGenerateOutline = { viewModel.generateCourseOutline() },
+                            onEnrollOutline = {
+                                viewModel.enrollInGeneratedOutline(
+                                    onEnrolled = {
                                         coroutineScope.launch {
                                             listState.animateScrollToItem(3)
                                         }
                                     }
                                 )
                             },
-                            onCreateCourse = {
-                                viewModel.createCourse(
-                                    onCourseCreated = {
-                                        coroutineScope.launch {
-                                            listState.animateScrollToItem(3)
+                            onClearOutline = viewModel::clearGeneratedOutline,
+                            onNavigateBack = viewModel::navigateBackToHome,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = horizontalMargin)
+                        )
+                    }
+
+                    AppScreenDestination.LEADERBOARD -> {
+                        DuolingoLeaderboardScreen(
+                            selectedLeague = uiState.selectedLeague,
+                            competitors = uiState.leaderboardEntries,
+                            currentUserRank = uiState.currentUserRank,
+                            currentUserWeeklyXp = uiState.currentUserWeeklyXp,
+                            isDrillModalVisible = uiState.isDrillModalVisible,
+                            currentDrillQuestion = uiState.currentDrillQuestion,
+                            drillSelectedOption = uiState.drillSelectedOption,
+                            drillFeedbackMessage = uiState.drillFeedbackMessage,
+                            isDrillAnswerCorrect = uiState.isDrillAnswerCorrect,
+                            streakBonusClaimedToday = uiState.streakBonusClaimedToday,
+                            currentStreakDays = uiState.dailyStreak.currentStreak,
+                            onSelectLeague = viewModel::selectLeague,
+                            onStartSpeedDrill = viewModel::startSpeedDrill,
+                            onSubmitDrillAnswer = viewModel::submitDrillAnswer,
+                            onCloseSpeedDrill = viewModel::closeSpeedDrill,
+                            onClaimStreakBonus = viewModel::claimStreakBonus,
+                            onNavigateBack = viewModel::navigateBackToHome,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = horizontalMargin)
+                        )
+                    }
+
+                    else -> {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .testTag("main_scroll_list"),
+                            contentPadding = PaddingValues(
+                                start = horizontalMargin,
+                                end = horizontalMargin,
+                                bottom = 36.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(24.dp)
+                        ) {
+                            // 0: Hero section with Animated Edam Mascot, Flashcard Deck, Companion Roster & Quick Launch Cards
+                            item(key = "hero_section") {
+                                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                                    EdamHeroSection(
+                                        isExpanded = isExpanded,
+                                        dailyStreak = uiState.dailyStreak,
+                                        selectedCompanion = uiState.selectedCompanion,
+                                        onMasterFlashcard = { viewModel.recordFlashcardMastered() },
+                                        onOpenProfile = { viewModel.toggleProfileModal(true) }
+                                    )
+                                    EdamCompanionRosterCard(
+                                        selectedCharacter = uiState.selectedCompanion,
+                                        onSelectCharacter = viewModel::selectCompanionCharacter
+                                    )
+                                    QuickFeatureLaunchRow(
+                                        selectedLeague = uiState.selectedLeague,
+                                        currentUserRank = uiState.currentUserRank,
+                                        currentUserWeeklyXp = uiState.currentUserWeeklyXp,
+                                        onOpenCourseStudio = {
+                                            viewModel.navigateToDestination(AppScreenDestination.COURSE_STUDIO)
+                                        },
+                                        onOpenLeaderboard = {
+                                            viewModel.navigateToDestination(AppScreenDestination.LEADERBOARD)
                                         }
+                                    )
+                                    val checkpoint = uiState.resumeCheckpoint
+                                    if (checkpoint != null) {
+                                        ResumeLearningBanner(
+                                            checkpoint = checkpoint,
+                                            selectedCompanion = uiState.selectedCompanion,
+                                            onResumeClick = viewModel::resumeFromLastCheckpoint
+                                        )
+                                    }
+                                }
+                            }
+
+                            // 1: Trending Courses Financial Market Dashboard + Multi-Instrument & Multi-Graph Learning Lab
+                            item(key = "trending_market_section") {
+                                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                                    TrendingCoursesMarketDashboard(
+                                        tickers = uiState.marketTickers,
+                                        selectedTickerId = uiState.selectedTickerId,
+                                        timeframe = uiState.marketTimeframe,
+                                        chartType = uiState.marketChartType,
+                                        filterTab = uiState.marketFilterTab,
+                                        searchQuery = uiState.marketSearchQuery,
+                                        bookmarkedTickerIds = uiState.bookmarkedTickerIds,
+                                        isLiveFeedActive = uiState.isMarketLiveFeedActive,
+                                        globalSummary = uiState.marketGlobalSummary,
+                                        isExpanded = isExpanded,
+                                        onSelectTicker = viewModel::selectMarketTicker,
+                                        onSelectTimeframe = viewModel::selectMarketTimeframe,
+                                        onSelectChartType = viewModel::selectMarketChartType,
+                                        onSelectFilterTab = viewModel::selectMarketFilterTab,
+                                        onSearchQueryChange = viewModel::onMarketSearchQueryChange,
+                                        onToggleBookmarkTicker = viewModel::toggleBookmarkTicker,
+                                        onToggleLiveFeed = viewModel::toggleMarketLiveFeed,
+                                        onLaunchTickerCourse = { ticker ->
+                                            viewModel.launchOrSelectTickerCourse(
+                                                ticker = ticker,
+                                                onScrollToCourse = {
+                                                    coroutineScope.launch {
+                                                        listState.animateScrollToItem(4)
+                                                    }
+                                                },
+                                                onScrollToBuilder = {
+                                                    coroutineScope.launch {
+                                                        listState.animateScrollToItem(3)
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    )
+                                    StockInstrumentsAndGraphsLearningLab()
+                                }
+                            }
+
+                            // 2: Novice to Grandmaster (GM) Chess Training Interactive Board & Curriculum Launcher
+                            item(key = "chess_gm_training_section") {
+                                NoviceToGmChessTrainingCard(
+                                    chessPuzzlesSolvedCount = uiState.dailyStreak.chessPuzzlesSolvedCount,
+                                    onPuzzleSolved = { viewModel.recordChessPuzzleSolved() },
+                                    onLaunchFullChessCourse = {
+                                        viewModel.openChessGmCourse(
+                                            onReady = {
+                                                coroutineScope.launch {
+                                                    listState.animateScrollToItem(4)
+                                                }
+                                            }
+                                        )
                                     }
                                 )
                             }
-                        )
-                    }
 
-                    // 3: Active Course section with Offline Ready indicator
-                    val course = uiState.activeCourse
-                    if (course != null) {
-                        item(key = "course_header_${course.id}") {
-                            CourseOverviewCard(
-                                course = course,
-                                cachedLessonsCount = uiState.cachedLessonsCount,
-                                onEnsureOffline = viewModel::ensureActiveCourseOfflineReady,
-                                onOpenLesson = { unitId, lessonId ->
-                                    viewModel.openLesson(unitId = unitId, lessonId = lessonId)
+                            // 3: Create a Course section + Share Market & Chess GM Course Launchers + Edam Studio Launcher
+                            item(key = "create_section") {
+                                CreateCourseSection(
+                                    courseName = uiState.courseName,
+                                    selectedLevel = uiState.level,
+                                    goal = uiState.goal,
+                                    availableLevels = viewModel.availableLevels,
+                                    isGenerating = uiState.isGeneratingCourse,
+                                    statusMessage = uiState.statusMessage,
+                                    selectedCompanion = uiState.selectedCompanion,
+                                    onCourseNameChange = viewModel::onCourseNameChange,
+                                    onLevelChange = viewModel::onLevelChange,
+                                    onGoalChange = viewModel::onGoalChange,
+                                    onPresetClick = viewModel::applyQuickPreset,
+                                    onOpenCourseStudio = {
+                                        viewModel.navigateToDestination(AppScreenDestination.COURSE_STUDIO)
+                                    },
+                                    onOpenShareMarketCourse = {
+                                        viewModel.openShareMarketCourse(
+                                            onReady = {
+                                                coroutineScope.launch {
+                                                    listState.animateScrollToItem(4)
+                                                }
+                                            }
+                                        )
+                                    },
+                                    onOpenChessGmCourse = {
+                                        viewModel.openChessGmCourse(
+                                            onReady = {
+                                                coroutineScope.launch {
+                                                    listState.animateScrollToItem(4)
+                                                }
+                                            }
+                                        )
+                                    },
+                                    onCreateCourse = {
+                                        viewModel.createCourse(
+                                            onCourseCreated = {
+                                                coroutineScope.launch {
+                                                    listState.animateScrollToItem(4)
+                                                }
+                                            }
+                                        )
+                                    }
+                                )
+                            }
+
+                            // 4: Active Course section with Offline Ready indicator (or Mascot Empty State)
+                            val course = uiState.activeCourse
+                            if (course != null) {
+                                item(key = "course_header_${course.id}") {
+                                    CourseOverviewCard(
+                                        course = course,
+                                        cachedLessonsCount = uiState.cachedLessonsCount,
+                                        selectedCompanion = uiState.selectedCompanion,
+                                        onEnsureOffline = viewModel::ensureActiveCourseOfflineReady,
+                                        onOpenLesson = { unitId, lessonId ->
+                                            viewModel.openLesson(unitId = unitId, lessonId = lessonId)
+                                        }
+                                    )
                                 }
-                            )
-                        }
-                    }
+                            } else {
+                                item(key = "empty_course_state") {
+                                    EmptyCoursePlaceholderCard(
+                                        selectedCompanion = uiState.selectedCompanion,
+                                        onLoadShareMarket = { viewModel.openShareMarketCourse() },
+                                        onLoadChessGm = { viewModel.openChessGmCourse() },
+                                        onOpenStudio = {
+                                            viewModel.navigateToDestination(AppScreenDestination.COURSE_STUDIO)
+                                        }
+                                    )
+                                }
+                            }
 
-                    // Prototype security notice footer
-                    item(key = "prototype_notice") {
-                        Text(
-                            text = stringResource(R.string.security_prototype_notice),
-                            style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp)
-                        )
+                            // Prototype security notice footer
+                            item(key = "prototype_notice") {
+                                Text(
+                                    text = stringResource(R.string.security_prototype_notice),
+                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            // Lesson Modal with Visual Quiz Progress Tracker
+            // Lesson Modal with Visual Quiz Progress Tracker & Animated Mascot
             val modalState = uiState.lessonModalState
             if (modalState != null) {
                 val isCompleted = uiState.activeCourse?.completed?.contains(modalState.lessonSummary.id) == true
                 LessonModalDialog(
+                    courseTitle = uiState.activeCourse?.title.orEmpty(),
                     modalState = modalState,
                     isLessonCompleted = isCompleted,
+                    selectedCompanion = uiState.selectedCompanion,
+                    chessPuzzlesSolvedCount = uiState.dailyStreak.chessPuzzlesSolvedCount,
+                    onChessPuzzleSolved = { viewModel.recordChessPuzzleSolved() },
                     onClose = viewModel::closeLesson,
                     onRetry = {
                         viewModel.openLesson(
@@ -384,6 +577,28 @@ fun EdamApp(
                 )
             }
 
+            // User Profile Screen with earned badges, SharedPreferences daily streak & companions
+            if (uiState.showProfileModal) {
+                UserProfileDialog(
+                    userDisplayName = uiState.userDisplayName,
+                    userEmail = uiState.userEmail,
+                    planTier = uiState.planTier,
+                    totalCoursesCount = uiState.savedCourses.size,
+                    totalCompletedLessons = uiState.totalCompletedLessonsCount,
+                    averageMasteryPct = uiState.averageMasteryPercentage,
+                    badgeDisplayItems = uiState.badgeDisplayItems,
+                    pushNotificationsEnabled = uiState.pushNotificationsEnabled,
+                    dailyStreak = uiState.dailyStreak,
+                    selectedCompanion = uiState.selectedCompanion,
+                    onSelectCompanion = viewModel::selectCompanionCharacter,
+                    onCheckInStreak = { viewModel.checkInDailyStreak() },
+                    onToggleStreakFreeze = viewModel::toggleStreakFreeze,
+                    onTogglePushNotifications = viewModel::setPushNotificationsEnabled,
+                    onSendTestNotification = viewModel::sendTestNotification,
+                    onClose = { viewModel.toggleProfileModal(false) }
+                )
+            }
+
             // Saved courses switcher bottom sheet
             if (uiState.showSavedCoursesSheet) {
                 ModalBottomSheet(
@@ -411,10 +626,20 @@ fun EdamApp(
 @Composable
 private fun EdamNavigationBar(
     planTier: PlanTier,
+    currentDestination: AppScreenDestination,
     savedCoursesCount: Int,
+    unlockedBadgesCount: Int,
+    currentUserRank: Int,
+    selectedLeagueEmoji: String,
+    currentStreak: Int,
+    selectedCompanion: EdamCompanionCharacter,
+    onGoHome: () -> Unit,
+    onGoToStudio: () -> Unit,
+    onGoToLeaderboard: () -> Unit,
     onGoToMarket: () -> Unit,
     onGoToCreate: () -> Unit,
     onOpenSavedCourses: () -> Unit,
+    onOpenProfile: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -432,25 +657,38 @@ private fun EdamNavigationBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable(onClick = onGoHome)
+                    .padding(vertical = 2.dp, horizontal = 4.dp)
+                    .testTag("nav_home_logo_button")
             ) {
-                Icon(
-                    imageVector = Icons.Filled.School,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(Color(0xFF1F2937)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    EdamMascot(
+                        expression = EdamExpression.HAPPY,
+                        character = selectedCompanion,
+                        size = 34.dp,
+                        showTablet = false
+                    )
+                }
                 Text(
                     text = stringResource(R.string.app_name),
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
-                        fontSize = 21.sp
+                        fontSize = 20.sp
                     ),
                     color = MaterialTheme.colorScheme.onBackground
                 )
@@ -466,14 +704,14 @@ private fun EdamNavigationBar(
                 ) {
                     Text(
                         text = planTier.displayName.uppercase(),
-                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 11.sp),
+                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 10.sp),
                         color = if (planTier == PlanTier.MAX) {
                             MaterialTheme.colorScheme.onSecondaryContainer
                         } else {
                             MaterialTheme.colorScheme.primary
                         },
                         modifier = Modifier
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                            .padding(horizontal = 7.dp, vertical = 3.dp)
                             .testTag("nav_plan_badge")
                     )
                 }
@@ -483,11 +721,63 @@ private fun EdamNavigationBar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
+                // AI Course Outline Studio Navigation Button
+                TextButton(
+                    onClick = onGoToStudio,
+                    shape = RoundedCornerShape(13.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    colors = ButtonDefaults.textButtonColors(
+                        containerColor = if (currentDestination == AppScreenDestination.COURSE_STUDIO) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            Color.Transparent
+                        },
+                        contentColor = MaterialTheme.colorScheme.primary
+                    ),
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("nav_ai_studio_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.AutoAwesome,
+                        contentDescription = stringResource(R.string.nav_ai_studio),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = stringResource(R.string.nav_ai_studio),
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                }
+
+                // Duolingo Competitive Leagues Navigation Button
+                TextButton(
+                    onClick = onGoToLeaderboard,
+                    shape = RoundedCornerShape(13.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    colors = ButtonDefaults.textButtonColors(
+                        containerColor = if (currentDestination == AppScreenDestination.LEADERBOARD) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            Color.Transparent
+                        },
+                        contentColor = MaterialTheme.colorScheme.onBackground
+                    ),
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("nav_leagues_button")
+                ) {
+                    Text(
+                        text = "$selectedLeagueEmoji #$currentUserRank",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold)
+                    )
+                }
+
                 if (savedCoursesCount > 0) {
                     TextButton(
                         onClick = onOpenSavedCourses,
                         shape = RoundedCornerShape(13.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                         modifier = Modifier
                             .minimumInteractiveComponentSize()
                             .testTag("nav_saved_courses_button")
@@ -495,9 +785,9 @@ private fun EdamNavigationBar(
                         Icon(
                             imageVector = Icons.Filled.BookmarkBorder,
                             contentDescription = stringResource(R.string.nav_saved_courses),
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(17.dp)
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = "$savedCoursesCount",
                             style = MaterialTheme.typography.labelLarge
@@ -508,7 +798,7 @@ private fun EdamNavigationBar(
                 TextButton(
                     onClick = onGoToMarket,
                     shape = RoundedCornerShape(13.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.primary
                     ),
@@ -518,30 +808,34 @@ private fun EdamNavigationBar(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ShowChart,
-                        contentDescription = null,
+                        contentDescription = stringResource(R.string.nav_trending_market),
                         modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = stringResource(R.string.nav_trending_market),
-                        style = MaterialTheme.typography.labelLarge
                     )
                 }
 
+                // Profile, Daily Streak & Badges navigation button
                 TextButton(
-                    onClick = onGoToCreate,
+                    onClick = onOpenProfile,
                     shape = RoundedCornerShape(13.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.onBackground
                     ),
                     modifier = Modifier
                         .minimumInteractiveComponentSize()
-                        .testTag("nav_create_course_button")
+                        .testTag("nav_profile_button")
                 ) {
+                    Icon(
+                        imageVector = Icons.Filled.LocalFireDepartment,
+                        contentDescription = stringResource(R.string.nav_profile),
+                        tint = Color(0xFFF59E0B),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
-                        text = stringResource(R.string.nav_create_course),
-                        style = MaterialTheme.typography.labelLarge
+                        text = "${currentStreak}d",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold),
+                        color = MaterialTheme.colorScheme.onBackground
                     )
                 }
 
@@ -562,87 +856,198 @@ private fun EdamNavigationBar(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun EdamHeroSection(
-    isExpanded: Boolean,
+private fun ScreenRegistryQuickBar(
+    screens: List<ScreenEntity>,
+    currentDestination: AppScreenDestination,
+    onSelectScreen: (ScreenEntity) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    FlowRow(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("screen_entity_registry_bar"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        screens.forEach { screen ->
+            val isCurrent = screen.screenId == currentDestination.screenEntityId
+            Surface(
+                onClick = { onSelectScreen(screen) },
+                shape = RoundedCornerShape(999.dp),
+                color = if (isCurrent) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f)
+                },
+                border = BorderStroke(
+                    width = if (isCurrent) 1.5.dp else 1.dp,
+                    color = if (isCurrent) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant
+                    }
+                ),
+                modifier = Modifier
+                    .testTag("screen_entity_chip_${screen.route}")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val icon = when (screen.route) {
+                        "course_studio" -> Icons.Filled.AutoAwesome
+                        "leaderboard" -> Icons.Filled.EmojiEvents
+                        "market" -> Icons.AutoMirrored.Filled.ShowChart
+                        "profile" -> Icons.Filled.Verified
+                        else -> Icons.Filled.School
+                    }
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (isCurrent) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = screen.title,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium
+                        ),
+                        color = if (isCurrent) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        }
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f)
+                    ) {
+                        Text(
+                            text = "${screen.visitCount}v",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickFeatureLaunchRow(
+    selectedLeague: LeagueTier,
+    currentUserRank: Int,
+    currentUserWeeklyXp: Int,
+    onOpenCourseStudio: () -> Unit,
+    onOpenLeaderboard: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val themeSpec = LocalEdamThemeSpec.current
-    Column(
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(
-                top = if (isExpanded) 44.dp else 24.dp,
-                bottom = 12.dp,
-                start = 10.dp,
-                end = 10.dp
-            )
-            .testTag("hero_section"),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .testTag("quick_feature_launch_row"),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = stringResource(R.string.hero_title),
-            style = MaterialTheme.typography.displayLarge.copy(
-                fontSize = if (isExpanded) 68.sp else 48.sp,
-                lineHeight = if (isExpanded) 68.sp else 48.sp,
-                letterSpacing = if (isExpanded) (-3.5).sp else (-2.0).sp
-            ),
-            color = MaterialTheme.colorScheme.onBackground,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = stringResource(R.string.hero_subtitle),
-            style = MaterialTheme.typography.bodyLarge.copy(
-                fontSize = 18.sp,
-                lineHeight = 27.sp
-            ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.widthIn(max = 650.dp)
-        )
-
-        Spacer(modifier = Modifier.height(22.dp))
-
-        // Central Purple & Blue Open-Book Artwork harmonized with active app theme
+        // Card 1: AI Course Outline Studio (Gemini 3.5 Flash)
         Surface(
+            onClick = onOpenCourseStudio,
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.65f)),
+            tonalElevation = if (themeSpec.isHighContrast) 0.dp else 2.dp,
             modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 760.dp)
-                .height(if (isExpanded) 216.dp else 172.dp),
-            shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(
-                width = if (themeSpec.isHighContrast) 2.dp else 1.5.dp,
-                brush = Brush.horizontalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.primary,
-                        MaterialTheme.colorScheme.secondary
-                    )
-                )
-            ),
-            shadowElevation = if (themeSpec.isHighContrast) 0.dp else 8.dp
+                .weight(1f)
+                .minimumInteractiveComponentSize()
+                .testTag("home_launch_studio_card")
         ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                Image(
-                    painter = painterResource(id = R.drawable.img_edam_book_hero_1790869521278),
-                    contentDescription = stringResource(R.string.hero_banner_content_description),
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-                // Subtle theme-matching vignette so the purple & blue open-book art blends into Light/Dark/High-Contrast themes
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                                    MaterialTheme.colorScheme.background.copy(alpha = if (themeSpec.isDark) 0.32f else 0.14f)
-                                )
-                            )
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.AutoAwesome,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(18.dp)
                         )
+                    }
+                    Text(
+                        text = stringResource(R.string.course_studio_title),
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = "Input any topic to generate a structured Edam course syllabus.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        // Card 2: Edam Competitive Leaderboard
+        Surface(
+            onClick = onOpenLeaderboard,
+            shape = RoundedCornerShape(22.dp),
+            color = Color(selectedLeague.primaryColorHex).copy(alpha = 0.14f),
+            border = BorderStroke(1.5.dp, Color(selectedLeague.primaryColorHex).copy(alpha = 0.75f)),
+            tonalElevation = if (themeSpec.isHighContrast) 0.dp else 2.dp,
+            modifier = Modifier
+                .weight(1f)
+                .minimumInteractiveComponentSize()
+                .testTag("home_launch_leaderboard_card")
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = selectedLeague.emoji,
+                        fontSize = 22.sp
+                    )
+                    Text(
+                        text = selectedLeague.displayName,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = "Rank #$currentUserRank · $currentUserWeeklyXp XP · Rapid Drills",
+                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
@@ -650,8 +1055,190 @@ private fun EdamHeroSection(
 }
 
 @Composable
+private fun EdamHeroSection(
+    isExpanded: Boolean,
+    dailyStreak: DailyStreakState,
+    selectedCompanion: EdamCompanionCharacter,
+    onMasterFlashcard: () -> Unit,
+    onOpenProfile: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val themeSpec = LocalEdamThemeSpec.current
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(
+                top = if (isExpanded) 32.dp else 18.dp,
+                bottom = 8.dp,
+                start = 4.dp,
+                end = 4.dp
+            )
+            .testTag("hero_section"),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Live Streak + XP + Active Companion Status Pill
+        Surface(
+            onClick = onOpenProfile,
+            shape = RoundedCornerShape(999.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)),
+            modifier = Modifier.testTag("hero_streak_xp_pill")
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.LocalFireDepartment,
+                        contentDescription = null,
+                        tint = Color(0xFFF59E0B),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "${dailyStreak.currentStreak} Day Streak",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Text(
+                    text = "•",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "⚡ ${dailyStreak.totalXp} XP · Lv.${dailyStreak.xpLevel}",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Text(
+            text = stringResource(R.string.hero_title),
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontSize = if (isExpanded) 60.sp else 42.sp,
+                lineHeight = if (isExpanded) 62.sp else 44.sp,
+                letterSpacing = if (isExpanded) (-2.5).sp else (-1.5).sp
+            ),
+            color = MaterialTheme.colorScheme.onBackground,
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = stringResource(R.string.hero_subtitle),
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontSize = 17.sp,
+                lineHeight = 25.sp
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 650.dp)
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Animated Edam Mascot & Companion Character Stage (replaces AI-generated book banner)
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 780.dp)
+                .testTag("hero_mascot_stage_card"),
+            shape = RoundedCornerShape(26.dp),
+            color = Color(0xFF1F2937),
+            border = BorderStroke(
+                width = if (themeSpec.isHighContrast) 2.dp else 1.5.dp,
+                color = Color(0xFFF59E0B).copy(alpha = 0.7f)
+            ),
+            shadowElevation = if (themeSpec.isHighContrast) 0.dp else 8.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(
+                                Color(0xFF111827),
+                                Color(0xFF1F2937),
+                                Color(0xFF273549)
+                            )
+                        )
+                    )
+                    .padding(horizontal = 22.dp, vertical = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(18.dp)
+            ) {
+                EdamMascot(
+                    expression = if (dailyStreak.studiedToday) EdamExpression.SUCCESS else EdamExpression.HAPPY,
+                    character = selectedCompanion,
+                    size = if (isExpanded) 118.dp else 96.dp,
+                    showTablet = true
+                )
+
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = Color(selectedCompanion.sproutPrimaryHex).copy(alpha = 0.2f)
+                    ) {
+                        Text(
+                            text = "${selectedCompanion.displayName.uppercase()} · ${selectedCompanion.roleTitle.uppercase()}",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 0.8.sp
+                            ),
+                            color = Color(0xFFFBBF24),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    Text(
+                        text = if (dailyStreak.studiedToday) {
+                            "Awesome momentum! Your ${dailyStreak.currentStreak}-day streak is active today."
+                        } else {
+                            "Welcome back! Flip a quick flashcard or complete a lesson to ignite today's streak."
+                        },
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            lineHeight = 22.sp
+                        ),
+                        color = Color(0xFFEDE9E4)
+                    )
+
+                    Text(
+                        text = selectedCompanion.bio,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFFEDE9E4).copy(alpha = 0.78f)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Interactive Flashcard Deck right in the First Hero Section
+        EdamHeroFlashcardDeck(
+            currentStreak = dailyStreak.currentStreak,
+            totalXp = dailyStreak.totalXp,
+            flashcardsReviewedCount = dailyStreak.flashcardsReviewedCount,
+            onMasterFlashcard = { onMasterFlashcard() }
+        )
+    }
+}
+
+@Composable
 private fun ResumeLearningBanner(
     checkpoint: ResumeCheckpointInfo,
+    selectedCompanion: EdamCompanionCharacter,
     onResumeClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -672,15 +1259,22 @@ private fun ResumeLearningBanner(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 18.dp),
+                .padding(horizontal = 18.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            EdamMascot(
+                expression = EdamExpression.CURIOUS,
+                character = selectedCompanion,
+                size = 56.dp,
+                showTablet = true
+            )
+
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(end = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(5.dp)
+                    .padding(end = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
                     text = stringResource(R.string.resume_banner_eyebrow),
@@ -752,11 +1346,14 @@ private fun CreateCourseSection(
     availableLevels: List<String>,
     isGenerating: Boolean,
     statusMessage: String,
+    selectedCompanion: EdamCompanionCharacter,
     onCourseNameChange: (String) -> Unit,
     onLevelChange: (String) -> Unit,
     onGoalChange: (String) -> Unit,
     onPresetClick: (String, String, String) -> Unit,
+    onOpenCourseStudio: () -> Unit,
     onOpenShareMarketCourse: () -> Unit,
+    onOpenChessGmCourse: () -> Unit,
     onCreateCourse: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -781,9 +1378,15 @@ private fun CreateCourseSection(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                EdamMascot(
+                    expression = if (isGenerating) EdamExpression.WORKING else EdamExpression.HAPPY,
+                    character = selectedCompanion,
+                    size = 64.dp,
+                    showTablet = true
+                )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = stringResource(R.string.create_section_title),
@@ -800,6 +1403,34 @@ private fun CreateCourseSection(
             }
 
             Spacer(modifier = Modifier.height(14.dp))
+
+            // Edam Course Outline Architect Launcher
+            Button(
+                onClick = onOpenCourseStudio,
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .testTag("open_course_studio_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.AutoAwesome,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Open Edam Course Outline Studio",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Featured Share Market Course Banner Button (Instant Offline Ready)
             OutlinedButton(
@@ -832,9 +1463,39 @@ private fun CreateCourseSection(
                 )
             }
 
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Featured Novice to Grandmaster (GM) Chess Academy Course Button
+            OutlinedButton(
+                onClick = onOpenChessGmCourse,
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(themeSpec.borderWidth, Color(EdamCompanionCharacter.VEX.sproutPrimaryHex)),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .minimumInteractiveComponentSize()
+                    .testTag("load_chess_gm_course_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.EmojiEvents,
+                    contentDescription = null,
+                    tint = Color(EdamCompanionCharacter.VEX.sproutPrimaryHex),
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "♟️ Load Novice to Grandmaster (GM) Chess Course (Offline Ready)",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
+                )
+            }
+
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Quick topic suggestions including Share Market
+            // Quick topic suggestions including Share Market & Novice to GM Chess
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -846,9 +1507,9 @@ private fun CreateCourseSection(
                         "Read candlestick charts, evaluate P/E & ROE fundamentals, and manage portfolio risk"
                     ),
                     Triple(
-                        "English Conversation & Grammar",
-                        "Intermediate",
-                        "Speak naturally in daily conversations and write clear professional emails"
+                        "Chess: Novice to Grandmaster (GM) Mastery",
+                        "Beginner to Advanced",
+                        "Master opening theory, tactical combinations, positional structures, and GM endgames"
                     ),
                     Triple(
                         "Python & Data Analysis",
@@ -1054,21 +1715,97 @@ private fun CreateCourseSection(
                 }
             }
 
-            // 5. Status Line (#status)
-            if (statusMessage.isNotBlank()) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = statusMessage,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (statusMessage.startsWith("Something went wrong") ||
-                        statusMessage.startsWith("Fill in")
-                    ) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+            // 5. Status Line (#status) with Animated Edam Mascot feedback
+            if (isGenerating || statusMessage.isNotBlank()) {
+                Spacer(modifier = Modifier.height(14.dp))
+                val isErrorStatus = statusMessage.startsWith("Something went wrong") ||
+                    statusMessage.startsWith("Fill in")
+                EdamMascotSpeechBanner(
+                    title = when {
+                        isGenerating -> "${selectedCompanion.displayName} is crafting your course..."
+                        isErrorStatus -> "${selectedCompanion.displayName} noticed an issue"
+                        else -> "${selectedCompanion.displayName} Course Update"
                     },
+                    message = statusMessage.ifBlank { "Designing units, lessons, and interactive practice quizzes..." },
+                    expression = when {
+                        isGenerating -> EdamExpression.WORKING
+                        isErrorStatus -> EdamExpression.ENCOURAGEMENT
+                        else -> EdamExpression.SUCCESS
+                    },
+                    character = selectedCompanion,
                     modifier = Modifier.testTag("status_text")
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyCoursePlaceholderCard(
+    selectedCompanion: EdamCompanionCharacter,
+    onLoadShareMarket: () -> Unit,
+    onLoadChessGm: () -> Unit,
+    onOpenStudio: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("empty_course_state_card"),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(26.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            EdamMascot(
+                expression = EdamExpression.SLEEP,
+                character = selectedCompanion,
+                size = 92.dp,
+                showTablet = false
+            )
+            Text(
+                text = "${selectedCompanion.displayName} is resting until you pick a course",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onBackground,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "Launch our complete Share Market or Novice-to-GM Chess Academy below, or generate a custom syllabus with Edam.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onLoadShareMarket,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Share Market", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                OutlinedButton(
+                    onClick = onLoadChessGm,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Chess GM", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Button(
+                    onClick = onOpenStudio,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Edam Studio", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
         }
     }
@@ -1079,6 +1816,7 @@ private fun CreateCourseSection(
 private fun CourseOverviewCard(
     course: Course,
     cachedLessonsCount: Int,
+    selectedCompanion: EdamCompanionCharacter,
     onEnsureOffline: () -> Unit,
     onOpenLesson: (unitId: String, lessonId: String) -> Unit,
     modifier: Modifier = Modifier
@@ -1174,22 +1912,45 @@ private fun CourseOverviewCard(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Course Title
-                    Text(
-                        text = course.title,
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.testTag("course_title_text")
-                    )
+                    // Course Title + Companion Mascot Guide
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = course.title,
+                                style = MaterialTheme.typography.headlineLarge,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier.testTag("course_title_text")
+                            )
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                    // Course Description
-                    Text(
-                        text = course.description,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                            Text(
+                                text = course.description,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        EdamMascot(
+                            expression = if (course.progressPercentage >= 100) {
+                                EdamExpression.SUCCESS
+                            } else {
+                                EdamExpression.HAPPY
+                            },
+                            character = when {
+                                course.title.contains("Chess", ignoreCase = true) -> EdamCompanionCharacter.VEX
+                                course.title.contains("Market", ignoreCase = true) ||
+                                    course.title.contains("Stock", ignoreCase = true) -> EdamCompanionCharacter.KORA
+                                else -> selectedCompanion
+                            },
+                            size = 76.dp,
+                            showTablet = true
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(20.dp))
 
@@ -1419,8 +2180,12 @@ private fun LessonRowButton(
 
 @Composable
 private fun LessonModalDialog(
+    courseTitle: String,
     modalState: LessonModalState,
     isLessonCompleted: Boolean,
+    selectedCompanion: EdamCompanionCharacter,
+    chessPuzzlesSolvedCount: Int,
+    onChessPuzzleSolved: () -> Unit,
     onClose: () -> Unit,
     onRetry: () -> Unit,
     onAnswerQuestion: (questionIndex: Int, optionIndex: Int) -> Unit,
@@ -1516,10 +2281,16 @@ private fun LessonModalDialog(
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 48.dp),
+                                    .padding(vertical = 40.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(16.dp)
                             ) {
+                                EdamMascot(
+                                    expression = EdamExpression.THINKING,
+                                    character = selectedCompanion,
+                                    size = 96.dp,
+                                    showTablet = true
+                                )
                                 CircularProgressIndicator(
                                     color = MaterialTheme.colorScheme.primary
                                 )
@@ -1539,15 +2310,11 @@ private fun LessonModalDialog(
                                     .padding(vertical = 24.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Text(
-                                    text = stringResource(R.string.lesson_error_title),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onBackground
-                                )
-                                Text(
-                                    text = modalState.errorMessage,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                EdamMascotSpeechBanner(
+                                    title = stringResource(R.string.lesson_error_title),
+                                    message = modalState.errorMessage,
+                                    expression = EdamExpression.ENCOURAGEMENT,
+                                    character = selectedCompanion
                                 )
                                 OutlinedButton(
                                     onClick = onRetry,
@@ -1569,9 +2336,13 @@ private fun LessonModalDialog(
 
                         modalState.lessonContent != null -> {
                             LessonLoadedContent(
+                                courseTitle = courseTitle,
                                 lesson = modalState.lessonContent,
                                 selectedAnswers = modalState.selectedAnswers,
                                 isLessonCompleted = isLessonCompleted,
+                                selectedCompanion = selectedCompanion,
+                                chessPuzzlesSolvedCount = chessPuzzlesSolvedCount,
+                                onChessPuzzleSolved = onChessPuzzleSolved,
                                 onAnswerQuestion = onAnswerQuestion,
                                 onMarkComplete = onMarkComplete
                             )
@@ -1585,19 +2356,68 @@ private fun LessonModalDialog(
 
 @Composable
 private fun LessonLoadedContent(
+    courseTitle: String,
     lesson: LessonContent,
     selectedAnswers: Map<Int, Int>,
     isLessonCompleted: Boolean,
+    selectedCompanion: EdamCompanionCharacter,
+    chessPuzzlesSolvedCount: Int,
+    onChessPuzzleSolved: () -> Unit,
     onAnswerQuestion: (questionIndex: Int, optionIndex: Int) -> Unit,
     onMarkComplete: () -> Unit
 ) {
+    val activeGuide = when {
+        courseTitle.contains("Chess", ignoreCase = true) ||
+            lesson.title.contains("Chess", ignoreCase = true) ||
+            lesson.title.contains("Grandmaster", ignoreCase = true) -> EdamCompanionCharacter.VEX
+        courseTitle.contains("Market", ignoreCase = true) ||
+            courseTitle.contains("Stock", ignoreCase = true) ||
+            lesson.title.contains("Candlestick", ignoreCase = true) -> EdamCompanionCharacter.KORA
+        else -> selectedCompanion
+    }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
+        // Companion Study Coach Tip Banner
+        EdamMascotSpeechBanner(
+            title = "${activeGuide.displayName}'s Study Insight",
+            message = lesson.objective.ifBlank {
+                "Read each concept carefully, explore the interactive visual lab, and test your recall in the quiz below to earn XP!"
+            },
+            expression = if (isLessonCompleted) EdamExpression.SUCCESS else EdamExpression.CURIOUS,
+            character = activeGuide,
+            badgeText = if (isLessonCompleted) "MASTERED ✓" else "+25 XP"
+        )
+
         // Explanation Sections (.learning-section)
         lesson.sections.forEach { section ->
             LearningSectionBlock(section = section)
+        }
+
+        // Interactive Stock Instruments & Graphs Lab inside Stock/Market Lessons
+        if (courseTitle.contains("Market", ignoreCase = true) ||
+            courseTitle.contains("Stock", ignoreCase = true) ||
+            lesson.title.contains("Candlestick", ignoreCase = true) ||
+            lesson.title.contains("Indicator", ignoreCase = true) ||
+            lesson.title.contains("Instrument", ignoreCase = true)
+        ) {
+            StockInstrumentsAndGraphsLearningLab()
+        }
+
+        // Interactive Chess Board Trainer inside Chess Novice-to-GM Lessons
+        if (courseTitle.contains("Chess", ignoreCase = true) ||
+            lesson.title.contains("Chess", ignoreCase = true) ||
+            lesson.title.contains("Tactic", ignoreCase = true) ||
+            lesson.title.contains("Endgame", ignoreCase = true) ||
+            lesson.title.contains("Opening", ignoreCase = true)
+        ) {
+            NoviceToGmChessTrainingCard(
+                chessPuzzlesSolvedCount = chessPuzzlesSolvedCount,
+                onPuzzleSolved = onChessPuzzleSolved,
+                onLaunchFullChessCourse = {}
+            )
         }
 
         // Practice Section (.practice) with Visual Quiz Progress Tracker
@@ -2029,14 +2849,15 @@ private fun PracticeQuestionCard(
                 } else {
                     stringResource(R.string.feedback_wrong_prefix, question.explanation)
                 }
-                Text(
-                    text = feedbackText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .padding(top = 10.dp)
-                        .testTag("feedback_text_$questionIndex")
-                )
+                Column(modifier = Modifier.padding(top = 12.dp)) {
+                    EdamMascotSpeechBanner(
+                        title = if (isCorrect) "Spot On! (+10 XP)" else "Keep Going — Let's Review",
+                        message = feedbackText,
+                        expression = if (isCorrect) EdamExpression.SUCCESS else EdamExpression.ENCOURAGEMENT,
+                        character = EdamCompanionCharacter.EDAM,
+                        modifier = Modifier.testTag("feedback_text_$questionIndex")
+                    )
+                }
             }
         }
     }
@@ -2148,16 +2969,16 @@ private fun SettingsModalDialog(
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(44.dp)
+                                            .size(48.dp)
                                             .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primaryContainer),
+                                            .background(Color(0xFF1F2937)),
                                         contentAlignment = Alignment.Center
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.AccountCircle,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(28.dp)
+                                        EdamMascot(
+                                            expression = EdamExpression.HAPPY,
+                                            character = uiState.selectedCompanion,
+                                            size = 42.dp,
+                                            showTablet = false
                                         )
                                     }
                                     Column {

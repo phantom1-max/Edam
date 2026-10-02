@@ -6,16 +6,16 @@
     <string name="nav_settings_description">Open Settings</string>
     <string name="hero_title">Learn anything.</string>
     <string name="hero_subtitle">Build a course, learn one lesson at a time, practice what you learn, and track your progress.</string>
-    <string name="hero_banner_content_description">Edam open book purple and blue learning illustration</string>
+    <string name="hero_banner_content_description">Edam intelligent learning companion illustration</string>
     <string name="create_section_title">Create a Course</string>
-    <string name="create_section_subtitle">Gemini will create the learning structure. Once acquired, lessons &amp; quizzes are bundled for 100% offline study.</string>
+    <string name="create_section_subtitle">Edam will create the learning structure. Once acquired, lessons &amp; quizzes are bundled for 100% offline study.</string>
     <string name="placeholder_course_name">What do you want to learn?</string>
     <string name="placeholder_level">Choose your level</string>
     <string name="placeholder_goal">What do you want to achieve?</string>
-    <string name="btn_create_with_gemini">Create with Gemini</string>
+    <string name="btn_create_with_gemini">Create with Edam</string>
     <string name="btn_building_course">Building your course…</string>
     <string name="status_fill_fields">Fill in the course, level and goal.</string>
-    <string name="status_designing_path">Gemini is designing your learning path…</string>
+    <string name="status_designing_path">Edam is designing your learning path…</string>
     <string name="status_course_created">Course created &amp; saved for offline study.</string>
     <string name="status_error_prefix">Something went wrong: %1$s</string>
     <string name="level_beginner">Beginner</string>
@@ -29,7 +29,7 @@
     <string name="btn_load_share_market">Explore Share Market Course (Offline Ready)</string>
     <string name="unit_header_format">Unit %1$d · %2$s</string>
     <string name="lesson_loading_objective">Loading lesson…</string>
-    <string name="lesson_loading_body">Gemini is preparing your lesson…</string>
+    <string name="lesson_loading_body">Edam is preparing your lesson…</string>
     <string name="lesson_error_title">Could not load this lesson.</string>
     <string name="lesson_practice_heading">Practice Quiz</string>
     <string name="quiz_tracker_title">Quiz Progress Tracker</string>
@@ -42,7 +42,7 @@
     <string name="feedback_correct_prefix">Correct! %1$s</string>
     <string name="feedback_wrong_prefix">Not quite. %1$s</string>
     <string name="close_lesson_content_description">Close lesson</string>
-    <string name="retry_lesson_button">Regenerate Lesson with AI</string>
+    <string name="retry_lesson_button">Regenerate Lesson with Edam</string>
     <string name="security_prototype_notice">Prototype Notice: API keys configured in BuildConfig are included in the debug APK. Do not share this APK publicly.</string>
     <string name="auth_title">Welcome to Edam</string>
     <string name="auth_subtitle">Sign in or sign up with your Gmail / Google account to sync your courses, unlock offline study packs, and track your learning progress.</string>
@@ -88,4 +88,64 @@
     <string name="resume_banner_eyebrow">CONTINUE WHERE YOU LEFT OFF</string>
     <string name="resume_banner_button">Resume Lesson</string>
     <string name="resume_quiz_checkpoint_format">Quiz checkpoint saved: %1$d answered</string>
+    <string name="nav_profile">Profile</string>
+    <string name="profile_screen_title">Learner Profile &amp; Achievements</string>
+    <string name="profile_screen_subtitle">Track your earned milestone badges, course completion records, and local storage status.</string>
+    <string name="profile_section_badges">Earned Badges (%1$d / %2$d)</string>
+    <string name="profile_section_notifications">Push Notifications</string>
+    <string name="profile_notifications_desc">Receive instant push notifications when you unlock milestone badges based on course completion percentages.</string>
+    <string name="profile_btn_test_notification">Send Test Milestone Notification</string>
+    <string name="profile_btn_grant_permission">Enable Notification Permission</string>
+    <string name="profile_permission_granted">Push Notifications Permitted ✓</string>
+    <string name="profile_badge_status_unlocked">Unlocked ✓</string>
+    <string name="profile_badge_status_progress">%1$d%% / %2$d%% Needed</string>
+    <string name="profile_stat_badges">Badges</string>
+    <string name="profile_stat_courses">Courses</string>
+    <string name="profile_stat_lessons">Lessons</string>
+    <string name="profile_stat_mastery">Mastery</string>
+
+    <!-- Navigation & Screens -->
+    <string name="nav_home">Courses</string>
+    <string name="nav_ai_studio">Edam Studio</string>
+    <string name="nav_leagues">Leagues</string>
+
+    <!-- Course Outline Studio (Edam-Powered) -->
+    <string name="course_studio_title">Edam Course Architect</string>
+    <string name="course_studio_subtitle">Enter any topic to trigger Edam and generate an exhaustive, modular course outline with interactive lessons.</string>
+    <string name="course_studio_topic_label">What do you want to master?</string>
+    <string name="course_studio_topic_hint">e.g., Algorithmic Trading, Chess Grandmaster Tactics, Behavioral Economics...</string>
+    <string name="course_studio_focus_label">Focus Specialization</string>
+    <string name="course_studio_units_label">Scope: %1$d Units</string>
+    <string name="course_studio_btn_generate">Generate Outline with Edam</string>
+    <string name="course_studio_btn_generating">Edam is structuring your outline…</string>
+    <string name="course_studio_btn_enroll">Enroll &amp; Start Course Now</string>
+    <string name="course_studio_btn_regenerate">Regenerate Syllabus</string>
+    <string name="course_studio_outcomes_header">Core Learning Outcomes</string>
+    <string name="course_studio_syllabus_header">Modular Course Syllabus (%1$d Units · %2$d Lessons)</string>
+    <string name="course_studio_est_time">%1$d Hours Total</string>
+    <string name="course_studio_total_xp">%1$d XP Reward</string>
+    <string name="course_studio_unit_format">Unit %1$d · %2$s</string>
+    <string name="course_studio_lesson_format">%1$s · %2$d min · +%3$d XP</string>
+
+    <!-- Duolingo Competitive Leaderboard -->
+    <string name="leaderboard_screen_title">Competitive Leagues</string>
+    <string name="leaderboard_season_ends_format">Season ends in: %1$s</string>
+    <string name="leaderboard_promotion_zone">▲ PROMOTION ZONE (Top 5 advance to %1$s)</string>
+    <string name="leaderboard_safe_zone">— SAFE ZONE (Remains in %1$s) —</string>
+    <string name="leaderboard_demotion_zone">▼ DEMOTION ZONE (Drops to %1$s)</string>
+    <string name="leaderboard_user_rank_badge">YOU · Rank #%1$d</string>
+    <string name="leaderboard_xp_format">%1$d XP</string>
+    <string name="leaderboard_streak_days">%1$d</string>
+    <string name="leaderboard_btn_rapid_drill">⚡ Rapid XP Challenge (+30 XP)</string>
+    <string name="leaderboard_btn_claim_streak">🔥 Daily Streak Reward (+25 XP)</string>
+    <string name="leaderboard_streak_claimed">Streak Claimed ✓</string>
+    <string name="drill_modal_title">⚡ Rapid XP Lightning Round</string>
+    <string name="drill_modal_subtitle">Answer correctly to earn +30 XP and leapfrog competitors in your league!</string>
+    <string name="drill_btn_submit">Submit Answer</string>
+    <string name="drill_btn_close">Close Drill</string>
+    <string name="bookmark_remove_desc">Remove from bookmarked tickers</string>
+    <string name="bookmark_add_desc">Bookmark course ticker</string>
+    <string name="market_search_placeholder">Search course tickers, symbols, or categories…</string>
+    <string name="empty_bookmarks_tip">No bookmarked course tickers yet. Tap the bookmark icon on any course to save it to your watchlist.</string>
+    <string name="empty_search_tip">No courses match your search query or selected filter tab.</string>
 </resources>

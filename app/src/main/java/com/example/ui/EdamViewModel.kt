@@ -3,13 +3,19 @@ package com.example.ui
 import android.app.Application
 import android.content.Context
 import android.util.Log
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.R
+import com.example.data.local.DailyStreakManager
+import com.example.data.local.DailyStreakState
+import com.example.data.local.EarnedBadgeEntity
 import com.example.data.local.EdamDatabase
+import com.example.data.model.BadgeCatalog
+import com.example.data.model.BadgeDisplayItem
 import com.example.data.model.Course
 import com.example.data.model.CourseUnit
 import com.example.data.model.LessonContent
@@ -24,16 +30,30 @@ import com.example.data.model.TrendingCourseTicker
 import com.example.data.model.TrendingMarketEngine
 import com.example.data.remote.EdamCloudRepository
 import com.example.data.repository.EdamRepository
+import com.example.notification.EdamNotificationHelper
 import com.example.ui.theme.EdamThemeMode
+import androidx.compose.ui.graphics.Color
+import com.example.data.local.LeaderboardEntryEntity
+import com.example.data.local.ScreenEntity
+import com.example.data.model.CourseOutline
+import com.example.data.model.CourseOutlinePresets
+import com.example.data.model.LeaderboardCompetitor
+import com.example.data.model.LeaderboardDrillCatalog
+import com.example.data.model.LeaderboardZone
+import com.example.data.model.LeagueTier
+import com.example.data.model.QuickTopicPreset
+import com.example.data.model.SpeedDrillQuestion
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -60,6 +80,8 @@ data class MarketDashboardState(
     val timeframe: MarketTimeframe = MarketTimeframe.ONE_DAY,
     val chartType: MarketChartType = MarketChartType.AREA_LINE,
     val filterTab: MarketFilterTab = MarketFilterTab.ALL,
+    val searchQuery: String = "",
+    val bookmarkedTickerIds: Set<String> = setOf("market_shmkt"),
     val isLiveFeedActive: Boolean = true
 )
 
@@ -71,6 +93,7 @@ data class EdamFormState(
     val statusMessage: String = "",
     val showSavedCoursesSheet: Boolean = false,
     val showSettingsModal: Boolean = false,
+    val showProfileModal: Boolean = false,
     val promoCodeInput: String = "",
     val promoStatusMessage: String = "",
     val lessonModalState: LessonModalState? = null
@@ -83,7 +106,51 @@ data class LocalPrefsState(
     val lastCourseId: String = "",
     val lastUnitId: String = "",
     val lastLessonId: String = "",
-    val quizCheckpointsJson: String = "{}"
+    val quizCheckpointsJson: String = "{}",
+    val pushNotificationsEnabled: Boolean = true
+)
+
+enum class AppScreenDestination(
+    val route: String,
+    val title: String,
+    val screenEntityId: String
+) {
+    HOME("home", "Course Dashboard", "screen_home"),
+    COURSE_STUDIO("course_studio", "AI Course Studio", "screen_course_studio"),
+    LEADERBOARD("leaderboard", "Duolingo Leagues", "screen_leaderboard"),
+    MARKET("market", "Trending Market", "screen_market"),
+    PROFILE("profile", "Profile & Badges", "screen_profile")
+}
+
+data class OutlineStudioState(
+    val topic: String = "",
+    val level: String = "Intermediate",
+    val goal: String = "",
+    val focusArea: String = "Applied Strategy",
+    val unitCount: Int = 5,
+    val isGenerating: Boolean = false,
+    val statusMessage: String = "",
+    val generationStep: String = "",
+    val generatedOutline: CourseOutline? = null,
+    val errorMessage: String? = null
+)
+
+data class DuolingoLeaderboardState(
+    val selectedLeague: LeagueTier = LeagueTier.SAPPHIRE,
+    val isDrillModalVisible: Boolean = false,
+    val currentDrillQuestion: SpeedDrillQuestion? = null,
+    val drillSelectedOption: Int? = null,
+    val drillFeedbackMessage: String? = null,
+    val isDrillAnswerCorrect: Boolean? = null,
+    val streakBonusClaimedToday: Boolean = false
+)
+
+data class LeaderboardComposite(
+    val selectedLeague: LeagueTier,
+    val competitors: List<LeaderboardCompetitor>,
+    val currentUserRank: Int,
+    val currentUserXp: Int,
+    val drillState: DuolingoLeaderboardState
 )
 
 data class ResumeCheckpointInfo(
@@ -99,6 +166,8 @@ data class ResumeCheckpointInfo(
 )
 
 data class EdamUiState(
+    val currentDestination: AppScreenDestination = AppScreenDestination.HOME,
+    val allScreens: List<ScreenEntity> = emptyList(),
     val courseName: String = "",
     val level: String = "",
     val goal: String = "",
@@ -109,6 +178,7 @@ data class EdamUiState(
     val savedCourses: List<Course> = emptyList(),
     val showSavedCoursesSheet: Boolean = false,
     val showSettingsModal: Boolean = false,
+    val showProfileModal: Boolean = false,
     val themeMode: EdamThemeMode = EdamThemeMode.SYSTEM_DEFAULT,
     val planTier: PlanTier = PlanTier.BASIC,
     val promoCodeUsed: String = "",
@@ -123,8 +193,39 @@ data class EdamUiState(
     val marketTimeframe: MarketTimeframe = MarketTimeframe.ONE_DAY,
     val marketChartType: MarketChartType = MarketChartType.AREA_LINE,
     val marketFilterTab: MarketFilterTab = MarketFilterTab.ALL,
+    val marketSearchQuery: String = "",
+    val bookmarkedTickerIds: Set<String> = setOf("market_shmkt"),
     val isMarketLiveFeedActive: Boolean = true,
-    val marketGlobalSummary: MarketGlobalSummary = MarketGlobalSummary()
+    val marketGlobalSummary: MarketGlobalSummary = MarketGlobalSummary(),
+    val earnedBadges: List<EarnedBadgeEntity> = emptyList(),
+    val badgeDisplayItems: List<BadgeDisplayItem> = emptyList(),
+    val pushNotificationsEnabled: Boolean = true,
+    val totalCompletedLessonsCount: Int = 0,
+    val averageMasteryPercentage: Int = 0,
+    // Course Outline Studio state
+    val outlineTopic: String = "",
+    val outlineLevel: String = "Intermediate",
+    val outlineGoal: String = "",
+    val outlineFocusArea: String = "Applied Strategy",
+    val outlineUnitCount: Int = 5,
+    val isGeneratingOutline: Boolean = false,
+    val outlineStatusMessage: String = "",
+    val outlineGenerationStep: String = "",
+    val generatedOutline: CourseOutline? = null,
+    val outlineErrorMessage: String? = null,
+    // Duolingo Leaderboard state
+    val selectedLeague: LeagueTier = LeagueTier.SAPPHIRE,
+    val leaderboardEntries: List<LeaderboardCompetitor> = emptyList(),
+    val currentUserRank: Int = 4,
+    val currentUserWeeklyXp: Int = 1420,
+    val isDrillModalVisible: Boolean = false,
+    val currentDrillQuestion: SpeedDrillQuestion? = null,
+    val drillSelectedOption: Int? = null,
+    val drillFeedbackMessage: String? = null,
+    val isDrillAnswerCorrect: Boolean? = null,
+    val streakBonusClaimedToday: Boolean = false,
+    val dailyStreak: DailyStreakState = DailyStreakState(),
+    val selectedCompanion: EdamCompanionCharacter = EdamCompanionCharacter.EDAM
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -138,6 +239,7 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
     private val lastUnitPrefKey = stringPreferencesKey("last_unit_id")
     private val lastLessonPrefKey = stringPreferencesKey("last_lesson_id")
     private val quizCheckpointsPrefKey = stringPreferencesKey("quiz_checkpoints_json")
+    private val pushNotificationsPrefKey = booleanPreferencesKey("push_notifications_enabled")
 
     private val databaseId: String = application.getString(R.string.firestore_database_id)
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance(databaseId)
@@ -150,6 +252,8 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
 
     private val formState = MutableStateFlow(EdamFormState())
     private val marketState = MutableStateFlow(MarketDashboardState())
+    private val dailyStreakManager = DailyStreakManager(appContext)
+    private val selectedCompanionFlow = MutableStateFlow(EdamCompanionCharacter.EDAM)
     private var tickCounter = 1L
 
     private val localPrefsFlow = appContext.edamDataStore.data.map { prefs ->
@@ -160,7 +264,8 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
             lastCourseId = prefs[lastCoursePrefKey] ?: "",
             lastUnitId = prefs[lastUnitPrefKey] ?: "",
             lastLessonId = prefs[lastLessonPrefKey] ?: "",
-            quizCheckpointsJson = prefs[quizCheckpointsPrefKey] ?: "{}"
+            quizCheckpointsJson = prefs[quizCheckpointsPrefKey] ?: "{}",
+            pushNotificationsEnabled = prefs[pushNotificationsPrefKey] ?: true
         )
     }
 
@@ -180,12 +285,55 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    val uiState: StateFlow<EdamUiState> = combine(
+    private val currentDestinationFlow = MutableStateFlow(AppScreenDestination.HOME)
+    private val outlineStudioStateFlow = MutableStateFlow(OutlineStudioState())
+    private val selectedLeagueFlow = MutableStateFlow(LeagueTier.SAPPHIRE)
+    private val duolingoDrillStateFlow = MutableStateFlow(DuolingoLeaderboardState())
+
+    private val leaderboardCompositeFlow = combine(
+        selectedLeagueFlow,
+        duolingoDrillStateFlow
+    ) { league, drill ->
+        Pair(league, drill)
+    }.flatMapLatest { (league, drill) ->
+        repository.leaderboardFlow(league.tierId).map { entities ->
+            val competitors = entities.mapIndexed { index, entity ->
+                val rank = index + 1
+                val zone = when {
+                    rank <= 5 -> LeaderboardZone.PROMOTION
+                    rank >= (entities.size - 4).coerceAtLeast(6) -> LeaderboardZone.DEMOTION
+                    else -> LeaderboardZone.SAFE
+                }
+                LeaderboardCompetitor(
+                    id = entity.userId,
+                    name = entity.displayName,
+                    avatarColor = Color(entity.avatarColorHex),
+                    avatarInitial = entity.avatarInitial,
+                    weeklyXp = entity.weeklyXp,
+                    streakDays = entity.streakDays,
+                    rank = rank,
+                    isCurrentUser = entity.isCurrentUser,
+                    zone = zone
+                )
+            }
+            val userEntry = competitors.find { it.isCurrentUser }
+            LeaderboardComposite(
+                selectedLeague = league,
+                competitors = competitors,
+                currentUserRank = userEntry?.rank ?: 4,
+                currentUserXp = userEntry?.weeklyXp ?: 1420,
+                drillState = drill
+            )
+        }
+    }
+
+    private val baseUiStateFlow: Flow<EdamUiState> = combine(
         formState,
         activeCourseWithOfflineCountFlow,
         localPrefsFlow,
-        marketState
-    ) { form, (activeCourse, cachedCount, allCourses), prefs, market ->
+        marketState,
+        repository.earnedBadgesFlow
+    ) { form, (activeCourse, cachedCount, allCourses), prefs, market, earnedBadges ->
         val currentUser = try {
             Firebase.auth.currentUser
         } catch (_: Exception) {
@@ -198,6 +346,35 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         val globalSummary = TrendingMarketEngine.computeGlobalSummary(mergedTickers)
         val resumeInfo = resolveResumeCheckpoint(activeCourse, prefs)
 
+        val totalCompletedLessons = allCourses.sumOf { it.completedLessonsCount }
+        val avgMastery = if (allCourses.isEmpty()) 0 else {
+            (allCourses.sumOf { it.progressPercentage } / allCourses.size)
+        }
+
+        val badgeItems = BadgeCatalog.MILESTONE_BADGES.map { def ->
+            val unlockedMatch = earnedBadges.find { it.badgeId == def.id }
+            if (unlockedMatch != null) {
+                BadgeDisplayItem(
+                    definition = def,
+                    isUnlocked = true,
+                    currentProgressPct = 100,
+                    unlockedAt = unlockedMatch.unlockedAt,
+                    courseTitle = unlockedMatch.courseTitle
+                )
+            } else {
+                val highestProgress = if (def.specificCourseId != null) {
+                    allCourses.find { it.id == def.specificCourseId }?.progressPercentage ?: 0
+                } else {
+                    allCourses.maxOfOrNull { it.progressPercentage } ?: (activeCourse?.progressPercentage ?: 0)
+                }
+                BadgeDisplayItem(
+                    definition = def,
+                    isUnlocked = false,
+                    currentProgressPct = highestProgress
+                )
+            }
+        }
+
         EdamUiState(
             courseName = form.courseName,
             level = form.level,
@@ -209,6 +386,7 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
             savedCourses = allCourses,
             showSavedCoursesSheet = form.showSavedCoursesSheet,
             showSettingsModal = form.showSettingsModal,
+            showProfileModal = form.showProfileModal,
             themeMode = prefs.themeMode,
             planTier = prefs.planTier,
             promoCodeUsed = prefs.promoCodeUsed,
@@ -223,8 +401,60 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
             marketTimeframe = market.timeframe,
             marketChartType = market.chartType,
             marketFilterTab = market.filterTab,
+            marketSearchQuery = market.searchQuery,
+            bookmarkedTickerIds = market.bookmarkedTickerIds,
             isMarketLiveFeedActive = market.isLiveFeedActive,
-            marketGlobalSummary = globalSummary
+            marketGlobalSummary = globalSummary,
+            earnedBadges = earnedBadges,
+            badgeDisplayItems = badgeItems,
+            pushNotificationsEnabled = prefs.pushNotificationsEnabled,
+            totalCompletedLessonsCount = totalCompletedLessons,
+            averageMasteryPercentage = avgMastery
+        )
+    }
+
+    private val companionAndStreakFlow = combine(
+        dailyStreakManager.streakState,
+        selectedCompanionFlow
+    ) { streak, companion ->
+        Pair(streak, companion)
+    }
+
+    val uiState: StateFlow<EdamUiState> = combine(
+        baseUiStateFlow,
+        repository.screensFlow,
+        currentDestinationFlow,
+        outlineStudioStateFlow,
+        leaderboardCompositeFlow
+    ) { base, screens, destination, outline, lb ->
+        base.copy(
+            currentDestination = destination,
+            allScreens = screens,
+            outlineTopic = outline.topic,
+            outlineLevel = outline.level,
+            outlineGoal = outline.goal,
+            outlineFocusArea = outline.focusArea,
+            outlineUnitCount = outline.unitCount,
+            isGeneratingOutline = outline.isGenerating,
+            outlineStatusMessage = outline.statusMessage,
+            outlineGenerationStep = outline.generationStep,
+            generatedOutline = outline.generatedOutline,
+            outlineErrorMessage = outline.errorMessage,
+            selectedLeague = lb.selectedLeague,
+            leaderboardEntries = lb.competitors,
+            currentUserRank = lb.currentUserRank,
+            currentUserWeeklyXp = lb.currentUserXp,
+            isDrillModalVisible = lb.drillState.isDrillModalVisible,
+            currentDrillQuestion = lb.drillState.currentDrillQuestion,
+            drillSelectedOption = lb.drillState.drillSelectedOption,
+            drillFeedbackMessage = lb.drillState.drillFeedbackMessage,
+            isDrillAnswerCorrect = lb.drillState.isDrillAnswerCorrect,
+            streakBonusClaimedToday = lb.drillState.streakBonusClaimedToday
+        )
+    }.combine(companionAndStreakFlow) { state, (streak, companion) ->
+        state.copy(
+            dailyStreak = streak,
+            selectedCompanion = companion
         )
     }.stateIn(
         scope = viewModelScope,
@@ -345,11 +575,23 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resumeFromLastCheckpoint() {
         val checkpoint = uiState.value.resumeCheckpoint ?: return
-        openLesson(
-            unitId = checkpoint.unitId,
-            lessonId = checkpoint.lessonId,
-            forceRefresh = false
-        )
+        val currentActive = uiState.value.activeCourse
+        if (currentActive == null || currentActive.id != checkpoint.courseId) {
+            viewModelScope.launch {
+                repository.selectCourse(checkpoint.courseId)
+                openLesson(
+                    unitId = checkpoint.unitId,
+                    lessonId = checkpoint.lessonId,
+                    forceRefresh = false
+                )
+            }
+        } else {
+            openLesson(
+                unitId = checkpoint.unitId,
+                lessonId = checkpoint.lessonId,
+                forceRefresh = false
+            )
+        }
     }
 
     val availableLevels = listOf(
@@ -363,7 +605,21 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
-            repository.ensureShareMarketCourseSeeded(makeActiveIfEmpty = true)
+            repository.ensureDefaultScreensSeeded()
+            val shareCourse = repository.ensureShareMarketCourseSeeded(makeActiveIfEmpty = true)
+            repository.ensureChessGmCourseSeeded()
+            repository.evaluateAndUnlockCourseBadges(shareCourse, context = null, pushEnabled = false)
+            val currentActive = repository.activeCourseFlow.first()
+            if (currentActive != null) {
+                repository.evaluateAndUnlockCourseBadges(currentActive, context = null, pushEnabled = false)
+            }
+            val initialXp = (currentActive?.completedLessonsCount ?: 0) * 50 + 1420
+            val userName = Firebase.auth.currentUser?.displayName ?: "You"
+            repository.ensureLeaderboardSeeded(
+                leagueId = LeagueTier.SAPPHIRE.tierId,
+                currentUserName = userName,
+                initialUserXp = initialXp
+            )
         }
         startRealTimeMarketTickerLoop()
     }
@@ -403,6 +659,21 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         marketState.update { it.copy(filterTab = filterTab) }
     }
 
+    fun onMarketSearchQueryChange(query: String) {
+        marketState.update { it.copy(searchQuery = query) }
+    }
+
+    fun toggleBookmarkTicker(tickerId: String) {
+        marketState.update { current ->
+            val updated = if (current.bookmarkedTickerIds.contains(tickerId)) {
+                current.bookmarkedTickerIds - tickerId
+            } else {
+                current.bookmarkedTickerIds + tickerId
+            }
+            current.copy(bookmarkedTickerIds = updated)
+        }
+    }
+
     fun toggleMarketLiveFeed() {
         marketState.update { it.copy(isLiveFeedActive = !it.isLiveFeedActive) }
     }
@@ -428,7 +699,7 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
             )
             formState.update {
                 it.copy(
-                    statusMessage = "Loaded ${ticker.symbol} (${ticker.title}) from Trending Market — tap 'Create with Gemini' to build!"
+                    statusMessage = "Loaded ${ticker.symbol} (${ticker.title}) from Trending Market — tap 'Create with Edam' to build!"
                 )
             }
             onScrollToBuilder()
@@ -504,6 +775,48 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun openChessGmCourse(onReady: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.activateChessGmCourse()
+            selectedCompanionFlow.value = EdamCompanionCharacter.VEX
+            formState.update {
+                it.copy(
+                    statusMessage = "♟️ Novice to Grandmaster (GM) Chess Mastery loaded with Vex (100% Offline Ready)."
+                )
+            }
+            onReady()
+        }
+    }
+
+    fun selectCompanionCharacter(companion: EdamCompanionCharacter) {
+        selectedCompanionFlow.value = companion
+    }
+
+    fun recordFlashcardMastered(xpReward: Int = 15) {
+        dailyStreakManager.recordStudyActivity(xpEarned = xpReward, isFlashcard = true)
+        viewModelScope.launch {
+            repository.awardLeaderboardXp(xpReward)
+        }
+    }
+
+    fun recordChessPuzzleSolved(xpReward: Int = 25) {
+        dailyStreakManager.recordStudyActivity(xpEarned = xpReward, isChessPuzzle = true)
+        viewModelScope.launch {
+            repository.awardLeaderboardXp(xpReward)
+        }
+    }
+
+    fun checkInDailyStreak(xpReward: Int = 20) {
+        dailyStreakManager.recordStudyActivity(xpEarned = xpReward)
+        viewModelScope.launch {
+            repository.awardLeaderboardXp(xpReward)
+        }
+    }
+
+    fun toggleStreakFreeze() {
+        dailyStreakManager.toggleStreakFreeze()
+    }
+
     fun createCourse(onCourseCreated: () -> Unit = {}) {
         val current = formState.value
         val name = current.courseName.trim()
@@ -520,7 +833,7 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         formState.update {
             it.copy(
                 isGeneratingCourse = true,
-                statusMessage = "Gemini is designing your learning path & bundling offline lessons..."
+                statusMessage = "Edam is designing your learning path & bundling offline lessons..."
             )
         }
 
@@ -531,6 +844,8 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
                     level = level,
                     goal = goal
                 )
+                dailyStreakManager.recordStudyActivity(xpEarned = 35)
+                repository.awardLeaderboardXp(35)
                 marketState.update {
                     it.copy(selectedTickerId = "user_course_${created.id}")
                 }
@@ -569,13 +884,14 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         val lessonSummary = unit.lessons.find { it.id == lessonId } ?: return
 
         viewModelScope.launch {
-            val prefsSnap = appContext.edamDataStore.data.map { prefs ->
-                prefs[quizCheckpointsPrefKey] ?: "{}"
+            val rawCheckpoints = try {
+                val snap = appContext.edamDataStore.data.first()
+                snap[quizCheckpointsPrefKey] ?: "{}"
+            } catch (_: Exception) {
+                "{}"
             }
-            var rawCheckpoints = "{}"
             try {
                 appContext.edamDataStore.edit { prefs ->
-                    rawCheckpoints = prefs[quizCheckpointsPrefKey] ?: "{}"
                     prefs[lastCoursePrefKey] = course.id
                     prefs[lastUnitPrefKey] = unit.id
                     prefs[lastLessonPrefKey] = lessonSummary.id
@@ -670,10 +986,23 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
     fun completeCurrentLesson() {
         val modal = formState.value.lessonModalState ?: return
         viewModelScope.launch {
-            repository.markLessonComplete(
+            val newlyEarned = repository.markLessonComplete(
                 courseId = modal.courseId,
-                lessonId = modal.lessonSummary.id
+                lessonId = modal.lessonSummary.id,
+                context = appContext,
+                pushEnabled = uiState.value.pushNotificationsEnabled
             )
+            dailyStreakManager.recordStudyActivity(xpEarned = 45)
+            repository.awardLeaderboardXp(45)
+            if (newlyEarned.isNotEmpty()) {
+                val latest = newlyEarned.last()
+                formState.update {
+                    it.copy(
+                        statusMessage = "🎖️ Achievement Unlocked: \"${latest.badgeTitle}\" (${latest.percentageRequired}%)!"
+                    )
+                }
+            }
+
             // Automatically advance last checkpoint to the next incomplete lesson in the course
             val course = uiState.value.activeCourse
             if (course != null) {
@@ -705,6 +1034,22 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleSettingsModal(show: Boolean) {
         formState.update { it.copy(showSettingsModal = show, promoStatusMessage = "") }
+    }
+
+    fun toggleProfileModal(show: Boolean) {
+        formState.update { it.copy(showProfileModal = show) }
+    }
+
+    fun setPushNotificationsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            appContext.edamDataStore.edit { prefs ->
+                prefs[pushNotificationsPrefKey] = enabled
+            }
+        }
+    }
+
+    fun sendTestNotification() {
+        EdamNotificationHelper.sendTestMilestoneNotification(appContext)
     }
 
     fun onPromoCodeInputChange(newCode: String) {
@@ -799,6 +1144,216 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteSavedCourse(courseId: String) {
         viewModelScope.launch {
             repository.deleteCourse(courseId)
+        }
+    }
+
+    // Screen Navigation
+    fun navigateToDestination(destination: AppScreenDestination) {
+        currentDestinationFlow.value = destination
+        viewModelScope.launch {
+            repository.recordScreenVisit(destination.screenEntityId)
+        }
+    }
+
+    fun navigateBackToHome() {
+        navigateToDestination(AppScreenDestination.HOME)
+    }
+
+    // AI Course Studio / Outline Generator Actions
+    fun onOutlineTopicChange(topic: String) {
+        outlineStudioStateFlow.update { it.copy(topic = topic, errorMessage = null) }
+    }
+
+    fun onOutlineLevelChange(level: String) {
+        outlineStudioStateFlow.update { it.copy(level = level) }
+    }
+
+    fun onOutlineGoalChange(goal: String) {
+        outlineStudioStateFlow.update { it.copy(goal = goal) }
+    }
+
+    fun onOutlineFocusAreaChange(focus: String) {
+        outlineStudioStateFlow.update { it.copy(focusArea = focus) }
+    }
+
+    fun onOutlineUnitCountChange(count: Int) {
+        outlineStudioStateFlow.update { it.copy(unitCount = count.coerceIn(3, 8)) }
+    }
+
+    fun applyOutlinePreset(preset: QuickTopicPreset) {
+        outlineStudioStateFlow.update {
+            it.copy(
+                topic = preset.topic,
+                level = preset.level,
+                goal = preset.goal,
+                focusArea = preset.focusArea,
+                errorMessage = null
+            )
+        }
+    }
+
+    fun generateCourseOutline(onSuccess: (() -> Unit)? = null) {
+        val current = outlineStudioStateFlow.value
+        val topic = current.topic.trim()
+        if (topic.isBlank()) {
+            outlineStudioStateFlow.update {
+                it.copy(errorMessage = "Please enter a topic to generate a structured outline.")
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            outlineStudioStateFlow.update {
+                it.copy(
+                    isGenerating = true,
+                    statusMessage = "Edam is structuring your course syllabus...",
+                    generationStep = "Edam is preparing your curriculum architecture...",
+                    errorMessage = null
+                )
+            }
+            delay(350L)
+            outlineStudioStateFlow.update {
+                it.copy(generationStep = "Edam is analyzing learning prerequisites & modular outcomes...")
+            }
+            delay(400L)
+            outlineStudioStateFlow.update {
+                it.copy(generationStep = "Edam is building units, lessons, and XP checkpoints...")
+            }
+
+            try {
+                val outline = repository.generateCourseOutline(
+                    topic = topic,
+                    level = current.level,
+                    goal = current.goal.ifBlank { "Master $topic through structured lessons and practice" },
+                    focusArea = current.focusArea,
+                    unitCount = current.unitCount
+                )
+                outlineStudioStateFlow.update {
+                    it.copy(
+                        isGenerating = false,
+                        generatedOutline = outline,
+                        statusMessage = "Course outline generated successfully with Edam!",
+                        generationStep = "Complete ✓"
+                    )
+                }
+                onSuccess?.invoke()
+            } catch (e: Exception) {
+                outlineStudioStateFlow.update {
+                    it.copy(
+                        isGenerating = false,
+                        statusMessage = "Could not generate outline. Please try again.",
+                        errorMessage = e.message
+                    )
+                }
+            }
+        }
+    }
+
+    fun enrollInGeneratedOutline(onEnrolled: (() -> Unit)? = null) {
+        val outline = outlineStudioStateFlow.value.generatedOutline ?: return
+        viewModelScope.launch {
+            val course = repository.saveAndActivateCourseOutline(outline)
+            repository.evaluateAndUnlockCourseBadges(course, context = appContext, pushEnabled = true)
+            awardUserXp(50)
+            currentDestinationFlow.value = AppScreenDestination.HOME
+            onEnrolled?.invoke()
+        }
+    }
+
+    fun clearGeneratedOutline() {
+        outlineStudioStateFlow.update {
+            it.copy(generatedOutline = null, statusMessage = "", errorMessage = null)
+        }
+    }
+
+    // Duolingo Competitive Leaderboard Actions
+    fun selectLeague(tier: LeagueTier) {
+        selectedLeagueFlow.value = tier
+        viewModelScope.launch {
+            repository.ensureLeaderboardSeeded(
+                leagueId = tier.tierId,
+                currentUserName = uiState.value.userDisplayName,
+                initialUserXp = uiState.value.currentUserWeeklyXp
+            )
+        }
+    }
+
+    fun startSpeedDrill() {
+        val drill = LeaderboardDrillCatalog.getRandomDrill()
+        duolingoDrillStateFlow.update {
+            it.copy(
+                isDrillModalVisible = true,
+                currentDrillQuestion = drill,
+                drillSelectedOption = null,
+                drillFeedbackMessage = null,
+                isDrillAnswerCorrect = null
+            )
+        }
+    }
+
+    fun submitDrillAnswer(optionIndex: Int) {
+        val currentDrill = duolingoDrillStateFlow.value.currentDrillQuestion ?: return
+        val isCorrect = optionIndex == currentDrill.correctIndex
+        duolingoDrillStateFlow.update {
+            it.copy(
+                drillSelectedOption = optionIndex,
+                isDrillAnswerCorrect = isCorrect,
+                drillFeedbackMessage = if (isCorrect) {
+                    "🎉 Correct! +${currentDrill.xpReward} XP earned! You climbed the leaderboard!"
+                } else {
+                    "Incorrect. ${currentDrill.explanation}"
+                }
+            )
+        }
+        if (isCorrect) {
+            dailyStreakManager.recordStudyActivity(xpEarned = currentDrill.xpReward)
+            viewModelScope.launch {
+                repository.awardLeaderboardXp(currentDrill.xpReward)
+                if (uiState.value.pushNotificationsEnabled) {
+                    EdamNotificationHelper.sendBadgeUnlockedNotification(
+                        context = appContext,
+                        badgeTitle = "⚡ Speed Drill Victor (+${currentDrill.xpReward} XP)",
+                        courseTitle = "Duolingo Leagues Competition",
+                        percentage = 100
+                    )
+                }
+            }
+        }
+    }
+
+    fun closeSpeedDrill() {
+        duolingoDrillStateFlow.update {
+            it.copy(
+                isDrillModalVisible = false,
+                currentDrillQuestion = null,
+                drillSelectedOption = null,
+                drillFeedbackMessage = null,
+                isDrillAnswerCorrect = null
+            )
+        }
+    }
+
+    fun claimStreakBonus() {
+        if (duolingoDrillStateFlow.value.streakBonusClaimedToday) return
+        duolingoDrillStateFlow.update { it.copy(streakBonusClaimedToday = true) }
+        dailyStreakManager.recordStudyActivity(xpEarned = 25)
+        viewModelScope.launch {
+            repository.awardLeaderboardXp(25)
+            if (uiState.value.pushNotificationsEnabled) {
+                EdamNotificationHelper.sendBadgeUnlockedNotification(
+                    context = appContext,
+                    badgeTitle = "🔥 Daily Streak Reward (+25 XP)",
+                    courseTitle = "Duolingo Daily Challenge",
+                    percentage = 100
+                )
+            }
+        }
+    }
+
+    fun awardUserXp(xp: Int) {
+        dailyStreakManager.recordStudyActivity(xpEarned = xp)
+        viewModelScope.launch {
+            repository.awardLeaderboardXp(xp)
         }
     }
 }

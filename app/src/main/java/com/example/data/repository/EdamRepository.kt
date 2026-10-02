@@ -1,16 +1,25 @@
 package com.example.data.repository
 
+import android.content.Context
 import com.example.data.local.CachedLessonEntity
 import com.example.data.local.CourseEntity
+import com.example.data.local.EarnedBadgeEntity
 import com.example.data.local.EdamDao
+import com.example.data.local.LeaderboardEntryEntity
+import com.example.data.local.ScreenEntity
+import com.example.data.model.BadgeCatalog
+import com.example.data.model.ChessAndFlashcardCatalog
 import com.example.data.model.Course
+import com.example.data.model.CourseOutline
 import com.example.data.model.CourseUnit
 import com.example.data.model.EdamJsonParser
+import com.example.data.model.LeagueTier
 import com.example.data.model.LessonContent
 import com.example.data.model.LessonSummary
 import com.example.data.model.ShareMarketCatalog
 import com.example.data.remote.EdamAiService
 import com.example.data.remote.EdamCloudRepository
+import com.example.notification.EdamNotificationHelper
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONObject
@@ -26,6 +35,195 @@ class EdamRepository(
 
     val allCoursesFlow: Flow<List<Course>> = dao.getAllCourses().map { list ->
         list.map { it.toDomainCourse() }
+    }
+
+    val earnedBadgesFlow: Flow<List<EarnedBadgeEntity>> = dao.getAllEarnedBadges()
+
+    val screensFlow: Flow<List<ScreenEntity>> = dao.getAllScreens()
+
+    suspend fun ensureDefaultScreensSeeded() {
+        if (dao.getScreenCount() == 0) {
+            val defaults = listOf(
+                ScreenEntity(
+                    screenId = "screen_home",
+                    title = "Course Dashboard",
+                    route = "home",
+                    description = "Active learning path, course outlines, and offline lessons",
+                    iconKey = "school",
+                    visitCount = 1
+                ),
+                ScreenEntity(
+                    screenId = "screen_course_studio",
+                    title = "Edam Course Studio",
+                    route = "course_studio",
+                    description = "Generate structured course outlines with Edam",
+                    iconKey = "auto_awesome",
+                    visitCount = 0
+                ),
+                ScreenEntity(
+                    screenId = "screen_leaderboard",
+                    title = "Duolingo Leagues",
+                    route = "leaderboard",
+                    description = "Weekly competitive leagues, promotion zones, and rapid XP drills",
+                    iconKey = "emoji_events",
+                    visitCount = 0
+                ),
+                ScreenEntity(
+                    screenId = "screen_market",
+                    title = "Trending Market",
+                    route = "market",
+                    description = "Real-time course engagement candles and learner volume",
+                    iconKey = "show_chart",
+                    visitCount = 0
+                ),
+                ScreenEntity(
+                    screenId = "screen_profile",
+                    title = "Learner Profile",
+                    route = "profile",
+                    description = "Earned milestone badges and local storage status",
+                    iconKey = "military_tech",
+                    visitCount = 0
+                )
+            )
+            dao.insertScreens(defaults)
+        }
+    }
+
+    suspend fun recordScreenVisit(screenId: String) {
+        dao.recordScreenVisit(screenId)
+    }
+
+    fun leaderboardFlow(leagueId: String): Flow<List<LeaderboardEntryEntity>> {
+        return dao.getLeaderboardForLeague(leagueId)
+    }
+
+    suspend fun ensureLeaderboardSeeded(
+        leagueId: String,
+        currentUserName: String,
+        initialUserXp: Int
+    ) {
+        if (dao.getLeaderboardCount(leagueId) == 0) {
+            val competitors = createDefaultCompetitorsForLeague(
+                leagueId = leagueId,
+                currentUserName = currentUserName,
+                userXp = initialUserXp
+            )
+            dao.insertLeaderboardEntries(competitors)
+        }
+    }
+
+    suspend fun awardLeaderboardXp(xpBonus: Int) {
+        dao.addXpToCurrentUser(xpBonus)
+    }
+
+    suspend fun updateCurrentUserLeague(newLeagueId: String) {
+        dao.updateCurrentUserLeague(newLeagueId)
+    }
+
+    suspend fun generateCourseOutline(
+        topic: String,
+        level: String,
+        goal: String,
+        focusArea: String,
+        unitCount: Int = 5
+    ): CourseOutline {
+        return aiService.generateCourseOutline(
+            topic = topic,
+            level = level,
+            goal = goal,
+            focusArea = focusArea,
+            unitCount = unitCount
+        )
+    }
+
+    suspend fun saveAndActivateCourseOutline(outline: CourseOutline): Course {
+        val course = outline.toCourse()
+        dao.clearActiveCourses()
+        dao.insertCourse(
+            CourseEntity(
+                id = course.id,
+                title = course.title,
+                level = course.level,
+                goal = course.goal,
+                courseJson = EdamJsonParser.courseToJson(course),
+                completedLessonsJson = EdamJsonParser.stringListToJson(course.completed),
+                isActive = true,
+                createdAt = course.createdAt
+            )
+        )
+        bundleCourseForOfflineUse(course)
+        syncCourseToCloudIfSignedIn(course.id)
+        return course
+    }
+
+    private fun createDefaultCompetitorsForLeague(
+        leagueId: String,
+        currentUserName: String,
+        userXp: Int
+    ): List<LeaderboardEntryEntity> {
+        val tier = LeagueTier.entries.firstOrNull { it.tierId == leagueId } ?: LeagueTier.BRONZE
+        val baseTierXp = tier.minXpRequired
+        val topScore = baseTierXp + 650
+
+        val names = listOf(
+            Triple("Alexandre Chen", 0xFF6366F1, "A"),
+            Triple("Sophia Rodriguez", 0xFF10B981, "S"),
+            Triple("Marcus Sterling", 0xFFF59E0B, "M"),
+            Triple("Elena Rostova", 0xFFEC4899, "E"),
+            Triple("Liam O'Connor", 0xFF06B6D4, "L"),
+            Triple("Aria Nakamura", 0xFF8B5CF6, "A"),
+            Triple("Vikram Patel", 0xFF3B82F6, "V"),
+            Triple("Chloe Dubois", 0xFF14B8A6, "C"),
+            Triple("Julian Alva", 0xFFF43F5E, "J"),
+            Triple("Fatima Al-Mansoor", 0xFF84CC16, "F"),
+            Triple("Ethan Huntley", 0xFFEAB308, "E"),
+            Triple("Zoe Kravitz", 0xFF64748B, "Z"),
+            Triple("Gabriel Santos", 0xFF0EA5E9, "G"),
+            Triple("Maya Lin", 0xFFA855F7, "M"),
+            Triple("David Kim", 0xFFD946EF, "D"),
+            Triple("Isabella Morales", 0xFF22C55E, "I"),
+            Triple("Noah Jensen", 0xFFF97316, "N"),
+            Triple("Hannah Becker", 0xFF6B7280, "H"),
+            Triple("Lucas Bennett", 0xFF0284C7, "L"),
+            Triple("Amara Okafor", 0xFF9333EA, "A")
+        )
+
+        val entries = mutableListOf<LeaderboardEntryEntity>()
+        var currentCompetitorScore = topScore
+
+        for (i in names.indices) {
+            val (name, color, initial) = names[i]
+            val streak = 3 + (i * 2) % 25
+            entries.add(
+                LeaderboardEntryEntity(
+                    userId = "comp_${leagueId}_$i",
+                    displayName = name,
+                    avatarColorHex = color,
+                    avatarInitial = initial,
+                    leagueId = leagueId,
+                    weeklyXp = currentCompetitorScore,
+                    streakDays = streak,
+                    isCurrentUser = false
+                )
+            )
+            currentCompetitorScore -= (25 + (i * 7) % 35)
+        }
+
+        val effectiveUserXp = if (userXp > 0) userXp else (baseTierXp + 380)
+        entries.add(
+            LeaderboardEntryEntity(
+                userId = "current_user_id",
+                displayName = if (currentUserName.isNotBlank()) currentUserName else "You",
+                avatarColorHex = 0xFF7C3AED,
+                avatarInitial = if (currentUserName.isNotBlank()) currentUserName.take(1).uppercase() else "Y",
+                leagueId = leagueId,
+                weeklyXp = effectiveUserXp,
+                streakDays = 5,
+                isCurrentUser = true
+            )
+        )
+
+        return entries.sortedByDescending { it.weeklyXp }
     }
 
     fun observeCachedLessonCount(courseId: String): Flow<Int> {
@@ -77,6 +275,50 @@ class EdamRepository(
 
     suspend fun activateShareMarketCourse(): Course {
         val course = ensureShareMarketCourseSeeded(makeActiveIfEmpty = false)
+        dao.clearActiveCourses()
+        dao.markCourseActive(course.id)
+        return course
+    }
+
+    /**
+     * Ensures the Novice to Grandmaster (GM) Chess Mastery course and all 15 lessons
+     * are seeded locally in Room for instant offline study.
+     */
+    suspend fun ensureChessGmCourseSeeded(): Course {
+        val existing = dao.getCourseById(ChessAndFlashcardCatalog.CHESS_GM_COURSE_ID)
+        val chessCourse = ChessAndFlashcardCatalog.createNoviceToGmChessCourse().copy(
+            completed = existing?.let { EdamJsonParser.parseStringList(it.completedLessonsJson) } ?: emptyList()
+        )
+        if (existing == null) {
+            dao.insertCourse(
+                CourseEntity(
+                    id = chessCourse.id,
+                    title = chessCourse.title,
+                    level = chessCourse.level,
+                    goal = chessCourse.goal,
+                    courseJson = EdamJsonParser.courseToJson(chessCourse),
+                    completedLessonsJson = EdamJsonParser.stringListToJson(chessCourse.completed),
+                    isActive = false,
+                    createdAt = chessCourse.createdAt
+                )
+            )
+        }
+        val lessonEntities = chessCourse.units.flatMap { unit ->
+            unit.lessons.map { lesson ->
+                val content = ChessAndFlashcardCatalog.getOfflineChessLessonContent(lesson.id, lesson.title)
+                CachedLessonEntity(
+                    courseId = chessCourse.id,
+                    lessonId = lesson.id,
+                    lessonJson = EdamJsonParser.lessonToJson(content)
+                )
+            }
+        }
+        dao.insertCachedLessons(lessonEntities)
+        return chessCourse
+    }
+
+    suspend fun activateChessGmCourse(): Course {
+        val course = ensureChessGmCourseSeeded()
         dao.clearActiveCourses()
         dao.markCourseActive(course.id)
         return course
@@ -197,8 +439,13 @@ class EdamRepository(
         return generated
     }
 
-    suspend fun markLessonComplete(courseId: String, lessonId: String) {
-        val entity = dao.getCourseById(courseId) ?: return
+    suspend fun markLessonComplete(
+        courseId: String,
+        lessonId: String,
+        context: Context? = null,
+        pushEnabled: Boolean = true
+    ): List<EarnedBadgeEntity> {
+        val entity = dao.getCourseById(courseId) ?: return emptyList()
         val currentCompleted = EdamJsonParser.parseStringList(entity.completedLessonsJson).toMutableList()
         if (!currentCompleted.contains(lessonId)) {
             currentCompleted.add(lessonId)
@@ -208,6 +455,43 @@ class EdamRepository(
             )
             syncCourseToCloudIfSignedIn(courseId)
         }
+        val updated = dao.getCourseById(courseId)?.toDomainCourse() ?: return emptyList()
+        return evaluateAndUnlockCourseBadges(updated, context, pushEnabled)
+    }
+
+    suspend fun evaluateAndUnlockCourseBadges(
+        course: Course,
+        context: Context? = null,
+        pushEnabled: Boolean = true
+    ): List<EarnedBadgeEntity> {
+        val newlyEarned = mutableListOf<EarnedBadgeEntity>()
+        val qualifying = BadgeCatalog.evaluateBadgesForCourse(course)
+        for (def in qualifying) {
+            val existing = dao.getEarnedBadge(def.id, course.id)
+            if (existing == null) {
+                val newBadge = EarnedBadgeEntity(
+                    badgeId = def.id,
+                    courseId = course.id,
+                    courseTitle = course.title,
+                    badgeTitle = def.title,
+                    description = def.description,
+                    percentageRequired = def.percentageRequired,
+                    iconKey = def.iconKey,
+                    colorCategory = def.colorCategory
+                )
+                dao.insertEarnedBadge(newBadge)
+                newlyEarned.add(newBadge)
+                if (context != null && pushEnabled) {
+                    EdamNotificationHelper.sendBadgeUnlockedNotification(
+                        context = context,
+                        badgeTitle = def.title,
+                        courseTitle = course.title,
+                        percentage = course.progressPercentage
+                    )
+                }
+            }
+        }
+        return newlyEarned
     }
 
     suspend fun selectCourse(courseId: String) {
@@ -220,7 +504,18 @@ class EdamRepository(
     }
 
     suspend fun deleteCourse(courseId: String) {
+        val target = dao.getCourseById(courseId)
+        val wasActive = target?.isActive == true
         dao.deleteCourse(courseId)
+        dao.deleteCachedLessonsForCourse(courseId)
+        if (wasActive) {
+            val nextCourse = dao.getFirstCourse()
+            if (nextCourse != null) {
+                dao.markCourseActive(nextCourse.id)
+            } else {
+                ensureShareMarketCourseSeeded(makeActiveIfEmpty = true)
+            }
+        }
     }
 
     suspend fun syncCourseToCloudIfSignedIn(courseId: String) {

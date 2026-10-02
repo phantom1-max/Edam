@@ -57,7 +57,7 @@ enum class PlanTier(
         }
 
         fun isValidDeveloperCode(input: String): Boolean {
-            return input.trim() == DEVELOPER_MAX_CODE
+            return input.trim().equals(DEVELOPER_MAX_CODE, ignoreCase = true)
         }
     }
 }
