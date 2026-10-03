@@ -37,10 +37,12 @@ import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -80,10 +82,15 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
 import com.google.firebase.auth.GoogleAuthProvider
+import com.google.firebase.auth.OAuthProvider
+import com.google.firebase.auth.PhoneAuthCredential
+import com.google.firebase.auth.PhoneAuthOptions
+import com.google.firebase.auth.PhoneAuthProvider
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import java.util.concurrent.TimeUnit
 
 fun attemptAutoSignIn(
     context: Context,
@@ -195,6 +202,107 @@ fun signOutUser(
     }
 }
 
+
+private fun authenticateWithEmail(
+    email: String,
+    password: String,
+    createAccount: Boolean,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit,
+    scope: CoroutineScope
+) {
+    scope.launch {
+        try {
+            if (createAccount) {
+                Firebase.auth.createUserWithEmailAndPassword(email.trim(), password).await()
+            } else {
+                Firebase.auth.signInWithEmailAndPassword(email.trim(), password).await()
+            }
+            onSuccess()
+        } catch (error: Exception) {
+            onError(error.localizedMessage ?: "Email authentication failed")
+        }
+    }
+}
+
+private fun requestPhoneOtp(
+    activity: Activity,
+    phoneNumber: String,
+    onCodeSent: (String) -> Unit,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit,
+    scope: CoroutineScope
+) {
+    val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
+        override fun onVerificationCompleted(credential: PhoneAuthCredential) {
+            scope.launch {
+                try {
+                    Firebase.auth.signInWithCredential(credential).await()
+                    onSuccess()
+                } catch (error: Exception) {
+                    onError(error.localizedMessage ?: "Phone authentication failed")
+                }
+            }
+        }
+
+        override fun onVerificationFailed(error: Exception) {
+            onError(error.localizedMessage ?: "Could not send the verification code")
+        }
+
+        override fun onCodeSent(
+            verificationId: String,
+            token: PhoneAuthProvider.ForceResendingToken
+        ) {
+            onCodeSent(verificationId)
+        }
+    }
+
+    PhoneAuthProvider.verifyPhoneNumber(
+        PhoneAuthOptions.newBuilder(Firebase.auth)
+            .setPhoneNumber(phoneNumber.trim())
+            .setTimeout(60L, TimeUnit.SECONDS)
+            .setActivity(activity)
+            .setCallbacks(callbacks)
+            .build()
+    )
+}
+
+private fun authenticateWithPhoneOtp(
+    verificationId: String,
+    otp: String,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit,
+    scope: CoroutineScope
+) {
+    scope.launch {
+        try {
+            val credential = PhoneAuthProvider.getCredential(verificationId, otp.trim())
+            Firebase.auth.signInWithCredential(credential).await()
+            onSuccess()
+        } catch (error: Exception) {
+            onError(error.localizedMessage ?: "Invalid or expired verification code")
+        }
+    }
+}
+
+private fun authenticateWithProvider(
+    activity: Activity,
+    providerId: String,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit,
+    scope: CoroutineScope
+) {
+    scope.launch {
+        try {
+            val provider = OAuthProvider.newBuilder(providerId).build()
+            Firebase.auth.startActivityForSignInWithProvider(activity, provider).await()
+            onSuccess()
+        } catch (error: Exception) {
+            onError(error.localizedMessage ?: "Provider sign-in failed")
+        }
+    }
+}
+
 @Composable
 fun AuthScreen(
     onAuthSuccess: () -> Unit
@@ -206,16 +314,13 @@ fun AuthScreen(
 
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var phoneNumber by remember { mutableStateOf("") }
+    var otp by remember { mutableStateOf("") }
+    var phoneVerificationId by remember { mutableStateOf<String?>(null) }
+    var termsAccepted by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        attemptAutoSignIn(
-            context = context,
-            credentialManager = credentialManager,
-            onAuthSuccess = onAuthSuccess,
-            onUnauthenticated = {},
-            scope = scope
-        )
-    }
 
     val glowAlpha = themeSpec.radialGlowAlpha
     val primaryGlow = MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha)
@@ -393,242 +498,276 @@ fun AuthScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // 1. Google Button A: "Sign In with Google" (for returning learners to sync existing cloud data)
-                Button(
-                    onClick = {
-                        isLoading = true
-                        errorMessage = null
-                        onGoogleSignInClicked(
-                            context = context,
-                            credentialManager = credentialManager,
-                            onAuthSuccess = {
-                                isLoading = false
-                                onAuthSuccess()
-                            },
-                            onAuthError = { msg ->
-                                isLoading = false
-                                errorMessage = msg
-                            },
-                            scope = scope,
-                            onAuthCancelled = {
-                                isLoading = false
-                            }
-                        )
-                    },
-                    enabled = !isLoading,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    ),
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .minimumInteractiveComponentSize()
-                        .testTag("google_sign_in_button")
-                ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "Connecting with Google…",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Filled.AccountCircle,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = stringResource(R.string.btn_sign_in_google),
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                    }
-                }
+                Text(
+                    text = "Sign in or create an account",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 2. Google Button B: "Create Account with Google" (for new learners to start fresh with bonus XP)
-                Button(
-                    onClick = {
-                        isLoading = true
-                        errorMessage = null
-                        onGoogleSignInClicked(
-                            context = context,
-                            credentialManager = credentialManager,
-                            onAuthSuccess = {
-                                isLoading = false
-                                onAuthSuccess()
-                            },
-                            onAuthError = { msg ->
-                                isLoading = false
-                                errorMessage = msg
-                            },
-                            scope = scope,
-                            onAuthCancelled = {
-                                isLoading = false
-                            }
-                        )
-                    },
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Email") },
+                    singleLine = true,
                     enabled = !isLoading,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                    ),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .minimumInteractiveComponentSize()
-                        .testTag("google_create_account_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.PersonAdd,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.primary
+                    modifier = Modifier.fillMaxWidth().testTag("email_input")
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password (at least 6 characters)") },
+                    singleLine = true,
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth().testTag("password_input")
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(
+                        checked = termsAccepted,
+                        onCheckedChange = { termsAccepted = it },
+                        enabled = !isLoading,
+                        modifier = Modifier.testTag("terms_checkbox")
                     )
-                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = stringResource(R.string.btn_sign_up_google),
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        text = "I agree to the Terms and Conditions",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                if (!termsAccepted) {
+                    Text(
+                        text = "Accept the Terms and Conditions to continue.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            if (email.isBlank() || password.length < 6) {
+                                errorMessage = "Enter an email and a password of at least 6 characters."
+                            } else {
+                                isLoading = true
+                                errorMessage = null
+                                authenticateWithEmail(email, password, false, {
+                                    isLoading = false
+                                    onAuthSuccess()
+                                }, {
+                                    isLoading = false
+                                    errorMessage = it
+                                }, scope)
+                            }
+                        },
+                        enabled = !isLoading && termsAccepted,
+                        modifier = Modifier.weight(1f).testTag("email_sign_in_button")
+                    ) { Text("Sign in") }
+                    Button(
+                        onClick = {
+                            if (email.isBlank() || password.length < 6) {
+                                errorMessage = "Enter an email and a password of at least 6 characters."
+                            } else {
+                                isLoading = true
+                                errorMessage = null
+                                authenticateWithEmail(email, password, true, {
+                                    isLoading = false
+                                    onAuthSuccess()
+                                }, {
+                                    isLoading = false
+                                    errorMessage = it
+                                }, scope)
+                            }
+                        },
+                        enabled = !isLoading && termsAccepted,
+                        modifier = Modifier.weight(1f).testTag("email_create_account_button")
+                    ) { Text("Create account") }
+                }
 
-                // Divider: OR CONTINUE WITH
+                Spacer(modifier = Modifier.height(18.dp))
+                Text(
+                    text = "Use a phone number",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = phoneNumber,
+                    onValueChange = { phoneNumber = it },
+                    label = { Text("Phone number with country code") },
+                    singleLine = true,
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth().testTag("phone_input")
+                )
+                if (phoneVerificationId != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = otp,
+                        onValueChange = { otp = it },
+                        label = { Text("SMS verification code") },
+                        singleLine = true,
+                        enabled = !isLoading,
+                        modifier = Modifier.fillMaxWidth().testTag("otp_input")
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        val activity = context as? Activity
+                        if (activity == null) {
+                            errorMessage = "An activity is required to verify a phone number."
+                        } else if (phoneVerificationId == null) {
+                            isLoading = true
+                            errorMessage = null
+                            requestPhoneOtp(activity, phoneNumber, {
+                                phoneVerificationId = it
+                                isLoading = false
+                            }, {
+                                isLoading = false
+                                onAuthSuccess()
+                            }, {
+                                isLoading = false
+                                errorMessage = it
+                            }, scope)
+                        } else {
+                            isLoading = true
+                            errorMessage = null
+                            authenticateWithPhoneOtp(phoneVerificationId!!, otp, {
+                                isLoading = false
+                                onAuthSuccess()
+                            }, {
+                                isLoading = false
+                                errorMessage = it
+                            }, scope)
+                        }
+                    },
+                    enabled = !isLoading && termsAccepted && phoneNumber.isNotBlank() &&
+                        (phoneVerificationId == null || otp.isNotBlank()),
+                    modifier = Modifier.fillMaxWidth().testTag("phone_otp_button")
+                ) {
+                    Text(if (phoneVerificationId == null) "Send SMS code" else "Verify SMS code")
+                }
+
+                Spacer(modifier = Modifier.height(18.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(1.dp)
-                            .background(MaterialTheme.colorScheme.outlineVariant)
-                    )
+                    Box(modifier = Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
                     Text(
                         text = stringResource(R.string.auth_or_divider),
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(1.dp)
-                            .background(MaterialTheme.colorScheme.outlineVariant)
-                    )
+                    Box(modifier = Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
+                Button(
+                    onClick = {
+                        isLoading = true
+                        errorMessage = null
+                        onGoogleSignInClicked(context, credentialManager, {
+                            isLoading = false
+                            onAuthSuccess()
+                        }, {
+                            isLoading = false
+                            errorMessage = it
+                        }, scope, { isLoading = false })
+                    },
+                    enabled = !isLoading && termsAccepted,
+                    modifier = Modifier.fillMaxWidth().testTag("google_sign_in_button")
+                ) { Text(stringResource(R.string.btn_sign_in_google)) }
 
-                // 3. Apple & GitHub Sign-In Options Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Apple Sign-In
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = {
+                        isLoading = true
+                        errorMessage = null
+                        onGoogleSignInClicked(context, credentialManager, {
+                            isLoading = false
+                            onAuthSuccess()
+                        }, {
+                            isLoading = false
+                            errorMessage = it
+                        }, scope, { isLoading = false })
+                    },
+                    enabled = !isLoading && termsAccepted,
+                    modifier = Modifier.fillMaxWidth().testTag("google_create_account_button")
+                ) { Text(stringResource(R.string.btn_sign_up_google)) }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
                         onClick = {
-                            // Instant secure guest/apple profile linking
-                            onAuthSuccess()
+                            val activity = context as? Activity
+                            if (activity == null) errorMessage = "An activity is required for Apple sign-in."
+                            else {
+                                isLoading = true
+                                authenticateWithProvider(activity, "apple.com", {
+                                    isLoading = false
+                                    onAuthSuccess()
+                                }, {
+                                    isLoading = false
+                                    errorMessage = it
+                                }, scope)
+                            }
                         },
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF000000),
-                            contentColor = Color.White
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .minimumInteractiveComponentSize()
-                            .testTag("apple_sign_in_button")
-                    ) {
-                        Text(
-                            text = " Apple",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            maxLines = 1
-                        )
-                    }
-
-                    // GitHub Sign-In
+                        enabled = !isLoading && termsAccepted,
+                        modifier = Modifier.weight(1f).testTag("apple_sign_in_button")
+                    ) { Text("Apple") }
                     Button(
                         onClick = {
-                            // Instant developer profile linking
-                            onAuthSuccess()
+                            val activity = context as? Activity
+                            if (activity == null) errorMessage = "An activity is required for GitHub sign-in."
+                            else {
+                                isLoading = true
+                                authenticateWithProvider(activity, "github.com", {
+                                    isLoading = false
+                                    onAuthSuccess()
+                                }, {
+                                    isLoading = false
+                                    errorMessage = it
+                                }, scope)
+                            }
                         },
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF24292F),
-                            contentColor = Color.White
-                        ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .minimumInteractiveComponentSize()
-                            .testTag("github_sign_in_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Code,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "GitHub",
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            maxLines = 1
-                        )
-                    }
+                        enabled = !isLoading && termsAccepted,
+                        modifier = Modifier.weight(1f).testTag("github_sign_in_button")
+                    ) { Text("GitHub") }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
-
-                // 4. Facebook Sign-In Button
                 Button(
                     onClick = {
-                        // Instant social profile linking
-                        onAuthSuccess()
+                        val activity = context as? Activity
+                        if (activity == null) errorMessage = "An activity is required for Facebook sign-in."
+                        else {
+                            isLoading = true
+                            authenticateWithProvider(activity, "facebook.com", {
+                                isLoading = false
+                                onAuthSuccess()
+                            }, {
+                                isLoading = false
+                                errorMessage = it
+                            }, scope)
+                        }
                     },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF1877F2),
-                        contentColor = Color.White
-                    ),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .minimumInteractiveComponentSize()
-                        .testTag("facebook_sign_in_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Public,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(R.string.btn_sign_in_facebook),
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
-                    )
-                }
+                    enabled = !isLoading && termsAccepted,
+                    modifier = Modifier.fillMaxWidth().testTag("facebook_sign_in_button")
+                ) { Text(stringResource(R.string.btn_sign_in_facebook)) }
 
                 Spacer(modifier = Modifier.height(10.dp))
-
-                // 5. Explore as Guest Button (Instant offline access)
                 Button(
-                    onClick = {
-                        onAuthSuccess()
-                    },
+                    onClick = { onAuthSuccess() },
+                    enabled = !isLoading,
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.surface,
@@ -636,22 +775,11 @@ fun AuthScreen(
                     ),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .minimumInteractiveComponentSize()
-                        .testTag("guest_explore_button")
+                    modifier = Modifier.fillMaxWidth().minimumInteractiveComponentSize().testTag("guest_explore_button")
                 ) {
-                    Icon(
-                        imageVector = Icons.Filled.Explore,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Icon(imageVector = Icons.Filled.Explore, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(R.string.btn_explore_guest),
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
-                    )
+                    Text(text = stringResource(R.string.btn_explore_guest), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
                 }
 
                 if (!errorMessage.isNullOrBlank()) {
