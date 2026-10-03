@@ -71,23 +71,24 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Prepare Signing & Firebase Configuration
+      - name: Validate and prepare Firebase signing configuration
         env:
           FIREBASE_CONFIG_JSON_BASE64: ${{ secrets.FIREBASE_CONFIG_JSON_BASE64 }}
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -n "$FIREBASE_CONFIG_JSON_BASE64" ]; then
-            mkdir -p app
-            printf '%s' "$FIREBASE_CONFIG_JSON_BASE64" | base64 --decode > app/google-services.json
-          fi
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/edam-release.jks"
-            echo "HAS_RELEASE_KEYSTORE=true" >> "$GITHUB_ENV"
-          else
-            echo "HAS_RELEASE_KEYSTORE=false" >> "$GITHUB_ENV"
-          fi
+          for name in FIREBASE_CONFIG_JSON_BASE64 ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Required repository secret ${name} is missing. A signed APK cannot be published."
+              exit 1
+            fi
+          done
+          printf '%s' "$FIREBASE_CONFIG_JSON_BASE64" | base64 --decode > app/google-services.json
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/edam-release.jks"
 
-      - name: Build Android APK
+      - name: Build and verify signed Android APK
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/edam-release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -95,16 +96,14 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew || true
-          if [ "$HAS_RELEASE_KEYSTORE" = "true" ]; then
-            bash ./gradlew --no-daemon assembleRelease
-            mkdir -p release-artifacts
-            cp app/build/outputs/apk/release/app-release.apk release-artifacts/edam-android-${{ needs.read-config.outputs.tag }}.apk
-          else
-            bash ./gradlew --no-daemon assembleDebug
-            mkdir -p release-artifacts
-            cp app/build/outputs/apk/debug/app-debug.apk release-artifacts/edam-android-${{ needs.read-config.outputs.tag }}.apk
-          fi
-          cp release-artifacts/edam-android-${{ needs.read-config.outputs.tag }}.apk release-artifacts/edam-android-latest.apk
+          bash ./gradlew --no-daemon assembleRelease
+          APK=app/build/outputs/apk/release/app-release.apk
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          mkdir -p release-artifacts
+          cp "$APK" release-artifacts/edam-android-${{ needs.read-config.outputs.tag }}.apk
+          cp "$APK" release-artifacts/edam-android-latest.apk
 
       - name: Commit APK to repository releases folder
         if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
