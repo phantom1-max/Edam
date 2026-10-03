@@ -12,6 +12,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -56,8 +57,10 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -66,6 +69,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.ui.theme.LocalEdamThemeSpec
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -101,7 +105,7 @@ enum class EdamExpression {
  * Distinct companion characters in the Edam learning universe.
  * All companions share the sleek, iconic spherical orb aesthetic of the hero character [EDAM],
  * elevated with thematic color palettes and elegant crests:
- * - [EDAM]: Hero character — Golden Dutch Cheese Wheel with Botanical Sprout & Dimples.
+ * - [EDAM]: Hero character — the supplied hooded learning companion with a sprout, tablet, and backpack.
  * - [KORA]: Market Alpha Companion — Radiant Ruby Flame Orb with Golden Momentum Crest.
  * - [VEX]: Grandmaster Strategy Companion — Royal Amethyst Orb with Celestial Crown Crest.
  * - [NOVA]: Cyber Pulse Companion — Brilliant Cyan Orb with Twin Orbital Halo Crest.
@@ -123,9 +127,9 @@ enum class EdamCompanionCharacter(
     EDAM(
         id = "edam",
         displayName = "Edam",
-        roleTitle = "AI Study Sprout (Main Mascot)",
-        bio = "Your cheerful botanical cheese-wheel scholar who synthesizes curricula, flashcards, and daily streaks.",
-        speciesBadge = "🌱 Sprout Wheel",
+        roleTitle = "Learning Companion (Main Mascot)",
+        bio = "Your friendly hooded learning companion who helps with every subject, daily streaks, and achievement milestones.",
+        speciesBadge = "🌱 Learning Companion",
         rindPrimaryHex = 0xFFF59E0B,
         rindSecondaryHex = 0xFFD97706,
         rindStrokeHex = 0xFFB45309,
@@ -351,7 +355,15 @@ fun EdamMascot(
             ),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
+        if (character == EdamCompanionCharacter.EDAM) {
+            Image(
+                painter = painterResource(R.drawable.edam_main_mascot),
+                contentDescription = characterDesc,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Canvas(modifier = Modifier.fillMaxSize()) {
             val canvasW = this.size.width
             val canvasH = this.size.height
             val cx = canvasW / 2f
@@ -437,6 +449,7 @@ fun EdamMascot(
                     }
                 }
             }
+        }
         }
     }
 }
