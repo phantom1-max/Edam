@@ -67,6 +67,8 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.OfflinePin
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Settings
@@ -94,6 +96,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -109,7 +112,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -140,6 +146,7 @@ import com.example.data.model.PlanTier
 import com.example.data.model.PracticeQuestion
 import com.example.data.model.ShareMarketCatalog
 import com.example.ui.theme.EdamThemeMode
+import com.example.ui.theme.EdamThemeQuickToggleButton
 import com.example.ui.theme.LocalEdamThemeSpec
 import kotlinx.coroutines.launch
 
@@ -177,9 +184,27 @@ fun EdamApp(
         viewModel.toggleProfileModal(false)
     }
 
+    var rootOriginInWindow by remember { mutableStateOf(Offset.Zero) }
+    var globalCursorPosition by remember { mutableStateOf<Offset?>(null) }
+
+    CompositionLocalProvider(LocalCursorPosition provides globalCursorPosition) {
     Scaffold(
         modifier = Modifier
             .fillMaxSize()
+            .onGloballyPositioned { coords ->
+                rootOriginInWindow = coords.localToRoot(Offset.Zero)
+            }
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull()
+                        if (change != null) {
+                            globalCursorPosition = rootOriginInWindow + change.position
+                        }
+                    }
+                }
+            }
             .drawBehind {
                 drawRect(color = bgColor)
                 if (glowAlpha > 0f) {
@@ -230,6 +255,17 @@ fun EdamApp(
                     selectedLeagueEmoji = uiState.selectedLeague.emoji,
                     currentStreak = uiState.dailyStreak.currentStreak,
                     selectedCompanion = uiState.selectedCompanion,
+                    themeMode = uiState.themeMode,
+                    onToggleTheme = {
+                        val current = uiState.themeMode
+                        val nextMode = when (current) {
+                            EdamThemeMode.DARK,
+                            EdamThemeMode.EXTRA_DARK,
+                            EdamThemeMode.HIGH_CONTRAST_BLACK -> EdamThemeMode.LIGHT
+                            else -> EdamThemeMode.DARK
+                        }
+                        viewModel.selectThemeMode(nextMode)
+                    },
                     onGoHome = {
                         viewModel.navigateToDestination(AppScreenDestination.HOME)
                     },
@@ -374,6 +410,13 @@ fun EdamApp(
                                         dailyStreak = uiState.dailyStreak,
                                         selectedCompanion = uiState.selectedCompanion,
                                         onMasterFlashcard = { viewModel.recordFlashcardMastered() },
+                                        onOpenProfile = { viewModel.toggleProfileModal(true) }
+                                    )
+                                    HomeDailyStreakDashboardCard(
+                                        dailyStreak = uiState.dailyStreak,
+                                        isSignedIn = uiState.userEmail.isNotBlank(),
+                                        onLogActivityToday = { viewModel.checkInDailyStreak(xpReward = 20) },
+                                        onSyncCloudStreak = { viewModel.syncDailyStreakToFirestore() },
                                         onOpenProfile = { viewModel.toggleProfileModal(true) }
                                     )
                                     EdamCompanionRosterCard(
@@ -620,6 +663,8 @@ fun EdamApp(
                     dailyStreak = uiState.dailyStreak,
                     selectedCompanion = uiState.selectedCompanion,
                     onSelectCompanion = viewModel::selectCompanionCharacter,
+                    themeMode = uiState.themeMode,
+                    onSelectTheme = viewModel::selectThemeMode,
                     onCheckInStreak = { viewModel.checkInDailyStreak() },
                     onToggleStreakFreeze = viewModel::toggleStreakFreeze,
                     dailyLessonGoal = uiState.dailyLessonGoal,
@@ -660,6 +705,7 @@ fun EdamApp(
             }
         }
     }
+    }
 }
 
 @Composable
@@ -672,6 +718,8 @@ private fun EdamNavigationBar(
     selectedLeagueEmoji: String,
     currentStreak: Int,
     selectedCompanion: EdamCompanionCharacter,
+    themeMode: EdamThemeMode,
+    onToggleTheme: () -> Unit,
     onGoHome: () -> Unit,
     onGoToStudio: () -> Unit,
     onGoToLeaderboard: () -> Unit,
@@ -868,15 +916,24 @@ private fun EdamNavigationBar(
                         imageVector = Icons.Filled.LocalFireDepartment,
                         contentDescription = stringResource(R.string.nav_profile),
                         tint = Color(0xFFF59E0B),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier
+                            .size(18.dp)
+                            .testTag("nav_streak_flame_icon")
                     )
                     Spacer(modifier = Modifier.width(3.dp))
                     Text(
                         text = "${currentStreak}d",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold),
-                        color = MaterialTheme.colorScheme.onBackground
+                        color = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.testTag("nav_streak_count_text")
                     )
                 }
+
+                // Theme Switcher Quick Toggle (☀️ Light / 🌙 Dark)
+                EdamThemeQuickToggleButton(
+                    themeMode = themeMode,
+                    onToggleTheme = onToggleTheme
+                )
 
                 IconButton(
                     onClick = onOpenSettings,
@@ -1271,6 +1328,254 @@ private fun EdamHeroSection(
             flashcardsReviewedCount = dailyStreak.flashcardsReviewedCount,
             onMasterFlashcard = { onMasterFlashcard() }
         )
+    }
+}
+
+/**
+ * Dedicated Home Dashboard Daily Learning Streak Card with animated Flame Icon,
+ * current consecutive day count, 7-day timeline, and Firestore Cloud Streak synchronization.
+ */
+@Composable
+private fun HomeDailyStreakDashboardCard(
+    dailyStreak: DailyStreakState,
+    isSignedIn: Boolean,
+    onLogActivityToday: () -> Unit,
+    onSyncCloudStreak: () -> Unit,
+    onOpenProfile: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val themeSpec = LocalEdamThemeSpec.current
+    val dayLabels = listOf("M", "T", "W", "T", "F", "S", "S")
+    val infiniteTransition = rememberInfiniteTransition(label = "home_streak_flame_pulse")
+    val flamePulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.08f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 880, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "home_flame_scale"
+    )
+
+    Surface(
+        onClick = onOpenProfile,
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("home_dashboard_streak_card"),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFF1A2230),
+        border = BorderStroke(
+            width = if (themeSpec.isHighContrast) 2.dp else 1.5.dp,
+            color = Color(0xFFF59E0B).copy(alpha = 0.78f)
+        ),
+        shadowElevation = if (themeSpec.isHighContrast) 0.dp else 6.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            Color(0xFF111827),
+                            Color(0xFF1F2937),
+                            Color(0xFF273549)
+                        )
+                    )
+                )
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Flame Icon Badge + Consecutive Day Streak Count
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(54.dp)
+                            .scale(flamePulseScale)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        Color(0xFFFBBF24).copy(alpha = 0.38f),
+                                        Color(0xFFF59E0B).copy(alpha = 0.16f),
+                                        Color.Transparent
+                                    )
+                                )
+                            )
+                            .testTag("home_streak_flame_badge"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.LocalFireDepartment,
+                            contentDescription = "Daily Learning Streak Flame",
+                            tint = Color(0xFFF59E0B),
+                            modifier = Modifier
+                                .size(34.dp)
+                                .testTag("home_streak_flame_icon")
+                        )
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = "${dailyStreak.currentStreak}",
+                                style = MaterialTheme.typography.headlineLarge.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 30.sp,
+                                    lineHeight = 32.sp
+                                ),
+                                color = Color(0xFFFBBF24),
+                                modifier = Modifier.testTag("home_streak_count_text")
+                            )
+                            Text(
+                                text = if (dailyStreak.currentStreak == 1) "Day Streak" else "Days Streak",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFEDE9E4),
+                                modifier = Modifier.padding(bottom = 2.dp)
+                            )
+                        }
+                        Text(
+                            text = "${dailyStreak.streakTierTitle} · Best: ${dailyStreak.longestStreak}d · ${if (dailyStreak.studiedToday) "Active Today ✓" else "Complete 1 activity today"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFEDE9E4).copy(alpha = 0.78f)
+                        )
+                    }
+                }
+
+                // Firestore Cloud Streak Sync Status Chip
+                Surface(
+                    onClick = onSyncCloudStreak,
+                    shape = RoundedCornerShape(999.dp),
+                    color = if (dailyStreak.isCloudSynced || isSignedIn) {
+                        Color(0xFF10B981).copy(alpha = 0.18f)
+                    } else {
+                        Color(0xFFF59E0B).copy(alpha = 0.18f)
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        if (dailyStreak.isCloudSynced || isSignedIn) Color(0xFF10B981) else Color(0xFFF59E0B)
+                    ),
+                    modifier = Modifier.testTag("home_streak_firestore_badge")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (dailyStreak.isCloudSynced || isSignedIn) {
+                                Icons.Filled.CloudDone
+                            } else {
+                                Icons.Filled.CloudSync
+                            },
+                            contentDescription = "Firestore Streak Sync",
+                            tint = if (dailyStreak.isCloudSynced || isSignedIn) {
+                                Color(0xFF34D399)
+                            } else {
+                                Color(0xFFFBBF24)
+                            },
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = if (dailyStreak.isCloudSynced || isSignedIn) {
+                                "Firestore Synced"
+                            } else {
+                                "Firestore Streak"
+                            },
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = if (dailyStreak.isCloudSynced || isSignedIn) {
+                                Color(0xFF34D399)
+                            } else {
+                                Color(0xFFFBBF24)
+                            }
+                        )
+                    }
+                }
+            }
+
+            // 7-Day Monday–Sunday Consecutive Flame Chain + Quick Log Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    dayLabels.forEachIndexed { idx, label ->
+                        val active = dailyStreak.weeklyStudyDays.getOrElse(idx) { false }
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (active) Color(0xFFF59E0B) else Color(0xFF374151)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.LocalFireDepartment,
+                                    contentDescription = "$label activity",
+                                    tint = if (active) Color(0xFF111827) else Color(0xFF9CA3AF),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = if (active) FontWeight.ExtraBold else FontWeight.Medium
+                                ),
+                                color = if (active) Color(0xFFFBBF24) else Color(0xFF9CA3AF)
+                            )
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = onLogActivityToday,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (dailyStreak.studiedToday) {
+                            Color(0xFF10B981)
+                        } else {
+                            Color(0xFFF59E0B)
+                        },
+                        contentColor = Color(0xFF111827)
+                    ),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .testTag("home_streak_check_in_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.LocalFireDepartment,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (dailyStreak.studiedToday) "Logged ✓" else "Check In",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold)
+                    )
+                }
+            }
+        }
     }
 }
 

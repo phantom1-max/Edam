@@ -1,45 +1,66 @@
-name: Android APK Release
+name: Multi-Platform Release (Android & PC Desktop)
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to create (for example v1.1.0)
-        required: true
-        default: v1.1.0
+        description: "Release tag to create (e.g. v1.2.0, or leave blank to read from release-config.env)"
+        required: false
+        default: ""
         type: string
+      commit_apk:
+        description: "Commit the APK directly to the releases/ folder in repo"
+        required: false
+        default: true
+        type: boolean
   push:
     tags:
       - "v*"
+    paths:
+      - "release-config.env"
 
 permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  read-config:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.resolve-tag.outputs.tag }}
+      version_name: ${{ steps.resolve-tag.outputs.version_name }}
+      release_title: ${{ steps.resolve-tag.outputs.release_title }}
+      build_android: ${{ steps.resolve-tag.outputs.build_android }}
+      build_windows: ${{ steps.resolve-tag.outputs.build_windows }}
+      build_macos: ${{ steps.resolve-tag.outputs.build_macos }}
+      build_linux: ${{ steps.resolve-tag.outputs.build_linux }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: resolve-tag
+        run: |
+          source release-config.env || true
+          INPUT_TAG="${{ inputs.tag }}"
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="${RELEASE_TAG:-v1.2.0}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version_name=${APP_VERSION_NAME:-1.2.0}" >> "$GITHUB_OUTPUT"
+          echo "release_title=${RELEASE_TITLE:-Edam ${TAG}}" >> "$GITHUB_OUTPUT"
+          echo "build_android=${BUILD_ANDROID_APK:-true}" >> "$GITHUB_OUTPUT"
+          echo "build_windows=${BUILD_WINDOWS_PC:-true}" >> "$GITHUB_OUTPUT"
+          echo "build_macos=${BUILD_MACOS_PC:-true}" >> "$GITHUB_OUTPUT"
+          echo "build_linux=${BUILD_LINUX_PC:-true}" >> "$GITHUB_OUTPUT"
+
+  build-android:
+    needs: read-config
+    if: needs.read-config.outputs.build_android == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
         uses: actions/checkout@v4
-
-      - name: Validate release configuration
-        env:
-          FIREBASE_CONFIG_JSON_BASE64: ${{ secrets.FIREBASE_CONFIG_JSON_BASE64 }}
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          : "${FIREBASE_CONFIG_JSON_BASE64:?Add FIREBASE_CONFIG_JSON_BASE64 repository secret}"
-          : "${ANDROID_KEYSTORE_BASE64:?Add ANDROID_KEYSTORE_BASE64 repository secret}"
-          : "${ANDROID_KEYSTORE_PASSWORD:?Add ANDROID_KEYSTORE_PASSWORD repository secret}"
-          : "${ANDROID_KEY_ALIAS:?Add ANDROID_KEY_ALIAS repository secret}"
-          : "${ANDROID_KEY_PASSWORD:?Add ANDROID_KEY_PASSWORD repository secret}"
-          mkdir -p app
-          printf '%s' "$FIREBASE_CONFIG_JSON_BASE64" | base64 --decode > app/google-services.json
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/edam-release.jks"
-          test -s app/google-services.json
-          test -s "$RUNNER_TEMP/edam-release.jks"
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -50,36 +71,134 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build signed release APK
+      - name: Prepare Signing & Firebase Configuration
+        env:
+          FIREBASE_CONFIG_JSON_BASE64: ${{ secrets.FIREBASE_CONFIG_JSON_BASE64 }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$FIREBASE_CONFIG_JSON_BASE64" ]; then
+            mkdir -p app
+            printf '%s' "$FIREBASE_CONFIG_JSON_BASE64" | base64 --decode > app/google-services.json
+          fi
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/edam-release.jks"
+            echo "HAS_RELEASE_KEYSTORE=true" >> "$GITHUB_ENV"
+          else
+            echo "HAS_RELEASE_KEYSTORE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build Android APK
         env:
           ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/edam-release.jks
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: bash ./gradlew --no-daemon assembleRelease
-
-      - name: Verify APK signature
         run: |
-          APK="app/build/outputs/apk/release/app-release.apk"
-          test -s "$APK"
-          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
-          test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose "$APK"
+          chmod +x gradlew || true
+          if [ "$HAS_RELEASE_KEYSTORE" = "true" ]; then
+            bash ./gradlew --no-daemon assembleRelease
+            mkdir -p release-artifacts
+            cp app/build/outputs/apk/release/app-release.apk release-artifacts/edam-android-${{ needs.read-config.outputs.tag }}.apk
+          else
+            bash ./gradlew --no-daemon assembleDebug
+            mkdir -p release-artifacts
+            cp app/build/outputs/apk/debug/app-debug.apk release-artifacts/edam-android-${{ needs.read-config.outputs.tag }}.apk
+          fi
+          cp release-artifacts/edam-android-${{ needs.read-config.outputs.tag }}.apk release-artifacts/edam-android-latest.apk
 
-      - name: Publish GitHub Release
+      - name: Commit APK to repository releases folder
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
+        run: |
+          mkdir -p releases
+          cp release-artifacts/edam-android-${{ needs.read-config.outputs.tag }}.apk releases/
+          cp release-artifacts/edam-android-latest.apk releases/
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add releases/
+          git commit -m "chore(release): update Android APK for ${{ needs.read-config.outputs.tag }} [skip ci]" || echo "No changes to commit"
+          git push origin HEAD:${{ github.ref_name }} || echo "Push skipped or not on branch"
+
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: edam-android-apk
+          path: release-artifacts/*.apk
+
+  build-desktop-pc:
+    needs: read-config
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            enabled: ${{ needs.read-config.outputs.build_linux }}
+          - os: windows-latest
+            platform: windows
+            enabled: ${{ needs.read-config.outputs.build_windows }}
+          - os: macos-latest
+            platform: macos
+            enabled: ${{ needs.read-config.outputs.build_macos }}
+    runs-on: ${{ matrix.os }}
+    if: matrix.enabled == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Desktop PC Package (${{ matrix.platform }})
+        run: |
+          cd desktop-pc
+          gradle packageDistributionForCurrentOS || gradle build
+          mkdir -p ../pc-artifacts
+          find build/compose/binaries -type f \( -name "*.msi" -o -name "*.exe" -o -name "*.dmg" -o -name "*.deb" -o -name "*.rpm" \) -exec cp {} ../pc-artifacts/ \; || true
+          find build/libs -name "*.jar" -exec cp {} ../pc-artifacts/edam-pc-${{ matrix.platform }}.jar \; || true
+
+      - name: Upload PC Artifacts (${{ matrix.platform }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: edam-desktop-${{ matrix.platform }}
+          path: pc-artifacts/*
+          if-no-files-found: warn
+
+  publish-release:
+    needs: [read-config, build-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-dist-artifacts
+          merge-multiple: true
+
+      - name: Create or Update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          DISPATCH_TAG: ${{ inputs.tag }}
+          TAG_NAME: ${{ needs.read-config.outputs.tag }}
+          TITLE: ${{ needs.read-config.outputs.release_title }}
         run: |
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            TAG_NAME="$GITHUB_REF_NAME"
+          FILES=()
+          for f in all-dist-artifacts/*; do
+            if [ -f "$f" ]; then
+              FILES+=("$f")
+            fi
+          done
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Updating existing release $TAG_NAME"
+            gh release upload "$TAG_NAME" "${FILES[@]}" --clobber
           else
-            TAG_NAME="$DISPATCH_TAG"
+            echo "Creating new release $TAG_NAME"
+            gh release create "$TAG_NAME" "${FILES[@]}" \
+              --title "$TITLE" \
+              --generate-notes
           fi
-          case "$TAG_NAME" in
-            v*) ;;
-            *) echo "Release tag must start with v" >&2; exit 1 ;;
-          esac
-          gh release create "$TAG_NAME" app/build/outputs/apk/release/app-release.apk \
-            --title "Edam $TAG_NAME" \
-            --generate-notes

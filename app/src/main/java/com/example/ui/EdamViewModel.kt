@@ -397,6 +397,7 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         val avgMastery = if (allCourses.isEmpty()) 0 else {
             (allCourses.sumOf { it.progressPercentage } / allCourses.size)
         }
+        val streak = dailyStreakManager.loadStateFromPrefs()
 
         val badgeItems = BadgeCatalog.MILESTONE_BADGES.map { def ->
             val unlockedMatch = earnedBadges.find { it.badgeId == def.id }
@@ -406,18 +407,51 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
                     isUnlocked = true,
                     currentProgressPct = 100,
                     unlockedAt = unlockedMatch.unlockedAt,
-                    courseTitle = unlockedMatch.courseTitle
+                    courseTitle = unlockedMatch.courseTitle,
+                    isCloudSynced = true
                 )
             } else {
-                val highestProgress = if (def.specificCourseId != null) {
-                    allCourses.find { it.id == def.specificCourseId }?.progressPercentage ?: 0
-                } else {
-                    allCourses.maxOfOrNull { it.progressPercentage } ?: (activeCourse?.progressPercentage ?: 0)
+                val (progress, autoUnlocked) = when (def.category) {
+                    "STREAK" -> {
+                        val currentStreak = streak.currentStreak
+                        val target = if (def.id == "badge_streak_7") 7 else 3
+                        val pct = ((currentStreak * 100) / target).coerceIn(0, 100)
+                        Pair(pct, pct >= 100)
+                    }
+                    "CHESS" -> {
+                        val count = streak.chessPuzzlesSolvedCount
+                        val pct = if (count >= 1) 100 else 0
+                        Pair(pct, count >= 1)
+                    }
+                    "MARKET" -> {
+                        val shmktCourse = allCourses.find { it.id == ShareMarketCatalog.SHARE_MARKET_COURSE_ID }
+                        val pct = shmktCourse?.progressPercentage ?: (if (def.id == "badge_market_analyst" && (activeCourse?.id == ShareMarketCatalog.SHARE_MARKET_COURSE_ID || mergedTickers.isNotEmpty())) 100 else 0)
+                        Pair(pct, pct >= def.percentageRequired)
+                    }
+                    "CODING" -> {
+                        val codingCourse = allCourses.find { it.title.contains("Code", ignoreCase = true) || it.title.contains("Python", ignoreCase = true) || it.title.contains("Virus", ignoreCase = true) }
+                        val pct = codingCourse?.progressPercentage ?: 0
+                        Pair(pct, pct >= def.percentageRequired)
+                    }
+                    "POLYMATH" -> {
+                        val hasCustom = allCourses.any { it.id != ShareMarketCatalog.SHARE_MARKET_COURSE_ID && it.id != ChessAndFlashcardCatalog.CHESS_GM_COURSE_ID }
+                        val pct = if (hasCustom) 100 else 0
+                        Pair(pct, hasCustom)
+                    }
+                    else -> {
+                        val highestProgress = if (def.specificCourseId != null) {
+                            allCourses.find { it.id == def.specificCourseId }?.progressPercentage ?: 0
+                        } else {
+                            allCourses.maxOfOrNull { it.progressPercentage } ?: (activeCourse?.progressPercentage ?: 0)
+                        }
+                        Pair(highestProgress, highestProgress >= def.percentageRequired)
+                    }
                 }
                 BadgeDisplayItem(
                     definition = def,
-                    isUnlocked = false,
-                    currentProgressPct = highestProgress
+                    isUnlocked = autoUnlocked,
+                    currentProgressPct = progress,
+                    isCloudSynced = autoUnlocked
                 )
             }
         }
@@ -674,6 +708,7 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
                 currentUserName = userName,
                 initialUserXp = initialXp
             )
+            syncSignedInUserWithCloud()
             // Ensure WorkManager daily learning goal reminder is scheduled according to DataStore prefs
             try {
                 val snap = appContext.edamDataStore.data.first()
@@ -779,6 +814,8 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private var streakObserverJob: kotlinx.coroutines.Job? = null
+
     fun syncSignedInUserWithCloud() {
         val user = try {
             Firebase.auth.currentUser
@@ -807,8 +844,149 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
                         themeMode = currentPrefs.themeMode.name
                     )
                 }
+
+                // Sync consecutive-day learning streak with Firestore
+                val existingCloudStreak = cloudRepository.getDailyStreak(user.uid).getOrNull()
+                val localStreak = dailyStreakManager.loadStateFromPrefs()
+                if (existingCloudStreak != null) {
+                    val merged = dailyStreakManager.applyCloudStreakDoc(existingCloudStreak)
+                    cloudRepository.upsertDailyStreak(
+                        currentStreak = merged.currentStreak,
+                        longestStreak = merged.longestStreak,
+                        lastStudyEpochDay = merged.lastStudyEpochDay,
+                        totalXp = merged.totalXp,
+                        weeklyStudyDaysCsv = merged.weeklyStudyDaysCsv,
+                        streakFreezeActive = merged.streakFreezeActive,
+                        streakFreezesAvailable = merged.streakFreezesAvailable
+                    )
+                } else {
+                    val created = cloudRepository.upsertDailyStreak(
+                        currentStreak = localStreak.currentStreak,
+                        longestStreak = localStreak.longestStreak,
+                        lastStudyEpochDay = localStreak.lastStudyEpochDay,
+                        totalXp = localStreak.totalXp,
+                        weeklyStudyDaysCsv = localStreak.weeklyStudyDaysCsv,
+                        streakFreezeActive = localStreak.streakFreezeActive,
+                        streakFreezesAvailable = localStreak.streakFreezesAvailable
+                    ).getOrNull()
+                    if (created != null) {
+                        dailyStreakManager.applyCloudStreakDoc(created)
+                    }
+                }
+
+                streakObserverJob?.cancel()
+                streakObserverJob = viewModelScope.launch {
+                    try {
+                        cloudRepository.observeUserDailyStreak(user.uid).collect { cloudStreak ->
+                            if (cloudStreak != null) {
+                                dailyStreakManager.applyCloudStreakDoc(cloudStreak)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.w("EdamViewModel", "Firestore streak listener stopped", e)
+                    }
+                }
+
+                // Sync Badges with Firestore
+                try {
+                    val cloudBadges = cloudRepository.getUserBadges(user.uid).getOrDefault(emptyList())
+                    for (cb in cloudBadges) {
+                        if (cb.isUnlocked) {
+                            repository.recordBadgeUnlocked(
+                                badgeId = cb.badgeKey.ifBlank { cb.id },
+                                badgeTitle = cb.title,
+                                percentageRequired = cb.progressPct,
+                                courseId = "cloud",
+                                courseTitle = cb.category
+                            )
+                        }
+                    }
+                    syncBadgesToFirestore()
+                } catch (e: Exception) {
+                    Log.w("EdamViewModel", "Failed to sync badges with Firestore", e)
+                }
             } catch (e: Exception) {
                 Log.w("EdamViewModel", "Failed to sync user account with Firestore", e)
+            }
+        }
+    }
+
+    fun syncBadgesToFirestore() {
+        val user = try {
+            Firebase.auth.currentUser
+        } catch (_: Exception) {
+            null
+        } ?: return
+
+        viewModelScope.launch {
+            try {
+                val currentBadges = uiState.value.badgeDisplayItems
+                for (item in currentBadges) {
+                    if (item.isUnlocked || item.currentProgressPct > 0) {
+                        cloudRepository.upsertUserBadge(
+                            badgeId = item.definition.id,
+                            badgeKey = item.definition.id,
+                            title = item.definition.title,
+                            description = item.definition.description,
+                            category = item.definition.category,
+                            iconKey = item.definition.iconKey,
+                            progressPct = item.currentProgressPct,
+                            isUnlocked = item.isUnlocked,
+                            unlockedAt = item.unlockedAt ?: System.currentTimeMillis()
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("EdamViewModel", "Failed to sync badges to Firestore", e)
+            }
+        }
+    }
+
+    private suspend fun checkAndAwardMilestoneBadges(streak: DailyStreakState) {
+        if (streak.currentStreak >= 3) {
+            repository.recordBadgeUnlocked(
+                badgeId = "badge_streak_3",
+                badgeTitle = "Flame Awakened",
+                percentageRequired = 100,
+                courseId = "streak",
+                courseTitle = "Daily Habit"
+            )
+        }
+        if (streak.currentStreak >= 7) {
+            repository.recordBadgeUnlocked(
+                badgeId = "badge_streak_7",
+                badgeTitle = "Unstoppable Week",
+                percentageRequired = 100,
+                courseId = "streak",
+                courseTitle = "Daily Habit"
+            )
+        }
+        syncBadgesToFirestore()
+    }
+
+    fun syncDailyStreakToFirestore(streak: DailyStreakState = dailyStreakManager.loadStateFromPrefs()) {
+        val user = try {
+            Firebase.auth.currentUser
+        } catch (_: Exception) {
+            null
+        } ?: return
+
+        viewModelScope.launch {
+            try {
+                val result = cloudRepository.upsertDailyStreak(
+                    currentStreak = streak.currentStreak,
+                    longestStreak = streak.longestStreak,
+                    lastStudyEpochDay = streak.lastStudyEpochDay,
+                    totalXp = streak.totalXp,
+                    weeklyStudyDaysCsv = streak.weeklyStudyDaysCsv,
+                    streakFreezeActive = streak.streakFreezeActive,
+                    streakFreezesAvailable = streak.streakFreezesAvailable
+                )
+                result.getOrNull()?.let { cloudDoc ->
+                    dailyStreakManager.applyCloudStreakDoc(cloudDoc)
+                }
+            } catch (e: Exception) {
+                Log.w("EdamViewModel", "Failed to sync daily streak to Firestore", e)
             }
         }
     }
@@ -838,12 +1016,13 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openShareMarketCourse(onReady: () -> Unit = {}) {
         viewModelScope.launch {
+            selectedCompanionFlow.value = EdamCompanionCharacter.ROBO_BROKER
             formState.update {
                 it.copy(
                     isGeneratingCourse = true,
                     courseCreationStageIndex = 1,
                     courseCreationProgress = 0.45f,
-                    statusMessage = "Kora & Edam are unpacking your Share Market & Equity Investing Mastery pack..."
+                    statusMessage = "RoboBroker & Edam are unpacking your Stock Market & Business pack..."
                 )
             }
             delay(280L)
@@ -856,12 +1035,20 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
             }
             delay(240L)
             repository.activateShareMarketCourse()
+            repository.recordBadgeUnlocked(
+                badgeId = "badge_market_analyst",
+                badgeTitle = "Bull Market Analyst",
+                percentageRequired = 100,
+                courseId = ShareMarketCatalog.SHARE_MARKET_COURSE_ID,
+                courseTitle = "Stock Market Lab"
+            )
+            syncBadgesToFirestore()
             formState.update {
                 it.copy(
                     isGeneratingCourse = false,
                     courseCreationStageIndex = 4,
                     courseCreationProgress = 1f,
-                    statusMessage = "Share Market & Equity Investing Mastery loaded (100% Offline Ready)."
+                    statusMessage = "Stock Market & Equity Investing Mastery loaded with RoboBroker (100% Offline Ready)."
                 )
             }
             onReady()
@@ -889,6 +1076,14 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
             }
             delay(240L)
             repository.activateChessGmCourse()
+            repository.recordBadgeUnlocked(
+                badgeId = "badge_chess_tactician",
+                badgeTitle = "Tactical Prodigy",
+                percentageRequired = 100,
+                courseId = ChessAndFlashcardCatalog.CHESS_GM_COURSE_ID,
+                courseTitle = "Novice to GM Chess"
+            )
+            syncBadgesToFirestore()
             formState.update {
                 it.copy(
                     isGeneratingCourse = false,
@@ -906,28 +1101,42 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun recordFlashcardMastered(xpReward: Int = 15) {
-        dailyStreakManager.recordStudyActivity(xpEarned = xpReward, isFlashcard = true)
+        val updated = dailyStreakManager.recordStudyActivity(xpEarned = xpReward, isFlashcard = true)
+        syncDailyStreakToFirestore(updated)
         viewModelScope.launch {
             repository.awardLeaderboardXp(xpReward)
+            checkAndAwardMilestoneBadges(updated)
         }
     }
 
     fun recordChessPuzzleSolved(xpReward: Int = 25) {
-        dailyStreakManager.recordStudyActivity(xpEarned = xpReward, isChessPuzzle = true)
+        val updated = dailyStreakManager.recordStudyActivity(xpEarned = xpReward, isChessPuzzle = true)
+        syncDailyStreakToFirestore(updated)
         viewModelScope.launch {
             repository.awardLeaderboardXp(xpReward)
+            repository.recordBadgeUnlocked(
+                badgeId = "badge_chess_tactician",
+                badgeTitle = "Tactical Prodigy",
+                percentageRequired = 100,
+                courseId = ChessAndFlashcardCatalog.CHESS_GM_COURSE_ID,
+                courseTitle = "Novice to GM Chess"
+            )
+            checkAndAwardMilestoneBadges(updated)
         }
     }
 
     fun checkInDailyStreak(xpReward: Int = 20) {
-        dailyStreakManager.recordStudyActivity(xpEarned = xpReward)
+        val updated = dailyStreakManager.recordStudyActivity(xpEarned = xpReward)
+        syncDailyStreakToFirestore(updated)
         viewModelScope.launch {
             repository.awardLeaderboardXp(xpReward)
+            checkAndAwardMilestoneBadges(updated)
         }
     }
 
     fun toggleStreakFreeze() {
-        dailyStreakManager.toggleStreakFreeze()
+        val updated = dailyStreakManager.toggleStreakFreeze()
+        syncDailyStreakToFirestore(updated)
     }
 
     fun setDailyLessonGoal(targetLessons: Int) {
@@ -1042,7 +1251,8 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
                 prefs[dailyLessonsEpochDayPrefKey] = todayEpoch
                 prefs[dailyLessonsCompletedTodayPrefKey] = (baseCount + increment).coerceAtLeast(0)
             }
-            dailyStreakManager.recordStudyActivity(xpEarned = 25 * increment.coerceAtLeast(1))
+            val updatedStreak = dailyStreakManager.recordStudyActivity(xpEarned = 25 * increment.coerceAtLeast(1))
+            syncDailyStreakToFirestore(updatedStreak)
             repository.awardLeaderboardXp(25 * increment.coerceAtLeast(1))
         }
     }
@@ -1092,6 +1302,28 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
                     level = level,
                     goal = goal
                 )
+                repository.recordBadgeUnlocked(
+                    badgeId = "badge_polymath",
+                    badgeTitle = "Universal Polymath",
+                    percentageRequired = 100,
+                    courseId = created.id,
+                    courseTitle = created.title
+                )
+                if (name.contains("Code", ignoreCase = true) ||
+                    name.contains("Python", ignoreCase = true) ||
+                    name.contains("Virus", ignoreCase = true) ||
+                    name.contains("Program", ignoreCase = true)
+                ) {
+                    selectedCompanionFlow.value = EdamCompanionCharacter.BIT_VIRUS
+                    repository.recordBadgeUnlocked(
+                        badgeId = "badge_coding_virus",
+                        badgeTitle = "Byte Glitch Overlord",
+                        percentageRequired = 100,
+                        courseId = created.id,
+                        courseTitle = created.title
+                    )
+                }
+                syncBadgesToFirestore()
                 formState.update {
                     it.copy(
                         courseCreationStageIndex = 3,
@@ -1252,7 +1484,8 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
                 context = appContext,
                 pushEnabled = uiState.value.pushNotificationsEnabled
             )
-            dailyStreakManager.recordStudyActivity(xpEarned = 45)
+            val updatedStreak = dailyStreakManager.recordStudyActivity(xpEarned = 45)
+            syncDailyStreakToFirestore(updatedStreak)
             repository.awardLeaderboardXp(45)
             val todayEpoch = DailyStreakManager.currentEpochDay()
             appContext.edamDataStore.edit { prefs ->
@@ -1636,7 +1869,8 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun awardUserXp(xp: Int) {
-        dailyStreakManager.recordStudyActivity(xpEarned = xp)
+        val updated = dailyStreakManager.recordStudyActivity(xpEarned = xp)
+        syncDailyStreakToFirestore(updated)
         viewModelScope.launch {
             repository.awardLeaderboardXp(xp)
         }

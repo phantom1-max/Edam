@@ -174,3 +174,78 @@ test("Authenticated user: cannot read another user's courses", async () => {
       .get()
   );
 });
+
+test("Authenticated user: can create, read, and update their own daily streak in Firestore", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const now = new Date();
+  const streakRef = aliceDb
+    .collection("users")
+    .doc(ALICE_UID)
+    .collection("streaks")
+    .doc("daily");
+
+  await assertSucceeds(
+    streakRef.set({
+      id: "daily",
+      userId: ALICE_UID,
+      currentStreak: 4,
+      longestStreak: 7,
+      lastStudyEpochDay: 20728,
+      totalXp: 1580,
+      weeklyStudyDaysCsv: "1,1,1,1,0,0,0",
+      streakFreezeActive: true,
+      streakFreezesAvailable: 2,
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  await assertSucceeds(streakRef.get());
+
+  await assertSucceeds(
+    streakRef.update({
+      currentStreak: 5,
+      longestStreak: 7,
+      lastStudyEpochDay: 20729,
+      totalXp: 1620,
+      weeklyStudyDaysCsv: "1,1,1,1,1,0,0",
+      updatedAt: now,
+    })
+  );
+});
+
+test("Authenticated user: cannot read or modify another user's daily streak", async () => {
+  const now = new Date();
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await context
+      .firestore()
+      .collection("users")
+      .doc(BOB_UID)
+      .collection("streaks")
+      .doc("daily")
+      .set({
+        id: "daily",
+        userId: BOB_UID,
+        currentStreak: 10,
+        longestStreak: 12,
+        lastStudyEpochDay: 20728,
+        totalXp: 2400,
+        weeklyStudyDaysCsv: "1,1,1,1,1,0,0",
+        streakFreezeActive: true,
+        streakFreezesAvailable: 2,
+        createdAt: now,
+        updatedAt: now,
+      });
+  });
+
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  await assertFails(
+    aliceDb
+      .collection("users")
+      .doc(BOB_UID)
+      .collection("streaks")
+      .doc("daily")
+      .get()
+  );
+});
+

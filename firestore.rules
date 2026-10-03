@@ -45,6 +45,35 @@ service cloud.firestore {
              data.updatedAt is timestamp && data.updatedAt <= request.time;
     }
 
+    function isValidDailyStreak(data) {
+      return data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.currentStreak is int && data.currentStreak >= 0 && data.currentStreak <= 100000 &&
+             data.longestStreak is int && data.longestStreak >= data.currentStreak && data.longestStreak <= 100000 &&
+             data.lastStudyEpochDay is int && data.lastStudyEpochDay >= 0 && data.lastStudyEpochDay <= 10000000 &&
+             data.totalXp is int && data.totalXp >= 0 && data.totalXp <= 100000000 &&
+             data.weeklyStudyDaysCsv is string && data.weeklyStudyDaysCsv.size() >= 1 && data.weeklyStudyDaysCsv.size() <= 32 &&
+             data.streakFreezeActive is bool &&
+             data.streakFreezesAvailable is int && data.streakFreezesAvailable >= 0 && data.streakFreezesAvailable <= 100 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidUserBadge(data) {
+      return data.id is string && data.id.size() >= 1 && data.id.size() <= 128 &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.badgeKey is string && data.badgeKey.size() >= 1 && data.badgeKey.size() <= 128 &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             data.description is string && data.description.size() >= 1 && data.description.size() <= 500 &&
+             data.category is string && data.category.size() >= 1 && data.category.size() <= 64 &&
+             data.iconKey is string && data.iconKey.size() >= 1 && data.iconKey.size() <= 64 &&
+             data.progressPct is int && data.progressPct >= 0 && data.progressPct <= 100 &&
+             data.isUnlocked is bool &&
+             (!('unlockedAt' in data) || data.unlockedAt == null || data.unlockedAt is int) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
     match /users/{userId} {
       allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
       allow list: if isSignedIn() && request.auth.uid == userId && resource.data.userId == request.auth.uid;
@@ -92,6 +121,60 @@ service cloud.firestore {
                          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'level', 'goal', 'courseJson', 'completedLessonsJson', 'offlineLessonsJson', 'updatedAt']);
 
         allow delete: if isSignedIn() && isValidId(userId) && isValidId(courseId) && request.auth.uid == userId;
+      }
+
+      match /streaks/{streakId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(streakId) && request.auth.uid == userId;
+        allow list: if isSignedIn() && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+
+        allow create: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(streakId) &&
+                         request.auth.uid == userId &&
+                         incoming().id == streakId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll(['id', 'userId', 'currentStreak', 'longestStreak', 'lastStudyEpochDay', 'totalXp', 'weeklyStudyDaysCsv', 'streakFreezeActive', 'streakFreezesAvailable', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['id', 'userId', 'currentStreak', 'longestStreak', 'lastStudyEpochDay', 'totalXp', 'weeklyStudyDaysCsv', 'streakFreezeActive', 'streakFreezesAvailable', 'createdAt', 'updatedAt']) &&
+                         isValidDailyStreak(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(streakId) &&
+                         request.auth.uid == userId &&
+                         isValidDailyStreak(incoming()) &&
+                         incoming().id == existing().id &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['currentStreak', 'longestStreak', 'lastStudyEpochDay', 'totalXp', 'weeklyStudyDaysCsv', 'streakFreezeActive', 'streakFreezesAvailable', 'updatedAt']);
+
+        allow delete: if isSignedIn() && isValidId(userId) && isValidId(streakId) && request.auth.uid == userId;
+      }
+
+      match /badges/{badgeId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(badgeId) && request.auth.uid == userId;
+        allow list: if isSignedIn() && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+
+        allow create: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(badgeId) &&
+                         request.auth.uid == userId &&
+                         incoming().id == badgeId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll(['id', 'userId', 'badgeKey', 'title', 'description', 'category', 'iconKey', 'progressPct', 'isUnlocked', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['id', 'userId', 'badgeKey', 'title', 'description', 'category', 'iconKey', 'progressPct', 'isUnlocked', 'unlockedAt', 'createdAt', 'updatedAt']) &&
+                         isValidUserBadge(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(badgeId) &&
+                         request.auth.uid == userId &&
+                         isValidUserBadge(incoming()) &&
+                         incoming().id == existing().id &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'iconKey', 'progressPct', 'isUnlocked', 'unlockedAt', 'updatedAt']);
+
+        allow delete: if isSignedIn() && isValidId(userId) && isValidId(badgeId) && request.auth.uid == userId;
       }
     }
   }

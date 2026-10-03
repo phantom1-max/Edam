@@ -110,6 +110,142 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "DailyStreak": {
+      "title": "DailyStreak",
+      "description": "Tracks consecutive days of learning activity, longest streak, XP, weekly day activity, and streak freeze shields in Firestore.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Streak document identifier (e.g., 'daily')."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase UID."
+        },
+        "currentStreak": {
+          "type": "integer",
+          "description": "Current consecutive days of learning activity."
+        },
+        "longestStreak": {
+          "type": "integer",
+          "description": "All-time longest consecutive learning streak."
+        },
+        "lastStudyEpochDay": {
+          "type": "integer",
+          "description": "UTC epoch day of the most recent recorded learning activity."
+        },
+        "totalXp": {
+          "type": "integer",
+          "description": "Cumulative XP earned across lessons, flashcards, and drills."
+        },
+        "weeklyStudyDaysCsv": {
+          "type": "string",
+          "description": "Comma-separated 7-day Monday-Sunday activity flags (e.g., '1,1,1,0,0,0,0')."
+        },
+        "streakFreezeActive": {
+          "type": "boolean",
+          "description": "Whether the streak freeze shield is currently active."
+        },
+        "streakFreezesAvailable": {
+          "type": "integer",
+          "description": "Number of remaining streak freeze shields."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when streak record was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when streak record was last updated."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "currentStreak",
+        "longestStreak",
+        "lastStudyEpochDay",
+        "totalXp",
+        "weeklyStudyDaysCsv",
+        "streakFreezeActive",
+        "streakFreezesAvailable",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserBadge": {
+      "title": "UserBadge",
+      "description": "Stores user learning achievements, milestone unlocks, and progress in Firestore.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique badge identifier."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase UID."
+        },
+        "badgeKey": {
+          "type": "string",
+          "description": "Milestone identifier key."
+        },
+        "title": {
+          "type": "string",
+          "description": "Badge achievement title."
+        },
+        "description": {
+          "type": "string",
+          "description": "Achievement unlock criteria description."
+        },
+        "category": {
+          "type": "string",
+          "description": "Milestone category (e.g. COURSE, STREAK, MARKET, CHESS, CODING)."
+        },
+        "iconKey": {
+          "type": "string",
+          "description": "Visual icon identifier."
+        },
+        "progressPct": {
+          "type": "integer",
+          "description": "Current percentage towards unlocking (0-100)."
+        },
+        "isUnlocked": {
+          "type": "boolean",
+          "description": "Whether the achievement has been unlocked."
+        },
+        "unlockedAt": {
+          "type": "integer",
+          "description": "Epoch millisecond timestamp when badge was earned."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when badge was initialized."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when badge was last updated."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "badgeKey",
+        "title",
+        "description",
+        "category",
+        "iconKey",
+        "progressPct",
+        "isUnlocked",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -124,6 +260,18 @@
         "$ref": "#/entities/CloudCourse"
       },
       "description": "Per-user synced courses, offline lesson packs, and completion progress."
+    },
+    "/users/{userId}/streaks/{streakId}": {
+      "schema": {
+        "$ref": "#/entities/DailyStreak"
+      },
+      "description": "Per-user daily learning streak record tracking consecutive days of activity."
+    },
+    "/users/{userId}/badges/{badgeId}": {
+      "schema": {
+        "$ref": "#/entities/UserBadge"
+      },
+      "description": "Per-user unlocked achievements and learning milestone progress."
     }
   }
 }

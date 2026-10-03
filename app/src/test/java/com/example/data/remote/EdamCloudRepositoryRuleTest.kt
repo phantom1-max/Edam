@@ -111,6 +111,38 @@ class EdamCloudRepositoryRuleTest : FirestoreEmulatorTestBase() {
         }
     }
 
+    @Test
+    fun upsertAndRecordDailyStreak_tracksConsecutiveDaysAndEnforcesOwnership() = runBlocking {
+        val aliceUid = signInTestUser(ALICE_EMAIL)
+        val aliceRepo = EdamCloudRepository(firestore, auth)
+        val day1Millis = 20700L * 86_400_000L
+        val day2Millis = 20701L * 86_400_000L
+
+        val firstDayResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            aliceRepo.recordConsecutiveDayActivityInCloud(xpEarned = 20, nowMillis = day1Millis)
+        }
+        assertTrue(firstDayResult.isSuccess)
+        val firstDoc = firstDayResult.getOrThrow()
+        assertEquals(1, firstDoc.currentStreak)
+
+        val secondDayResult = withTimeout(DEFAULT_TIMEOUT_MS) {
+            aliceRepo.recordConsecutiveDayActivityInCloud(xpEarned = 30, nowMillis = day2Millis)
+        }
+        assertTrue(secondDayResult.isSuccess)
+        val secondDoc = secondDayResult.getOrThrow()
+        assertEquals(2, secondDoc.currentStreak)
+        assertTrue(secondDoc.longestStreak >= 2)
+
+        signInTestUser(BOB_EMAIL)
+        val bobRepo = EdamCloudRepository(firestore, auth)
+        val bobReadAttempt = withTimeout(DEFAULT_TIMEOUT_MS) {
+            bobRepo.getDailyStreak(targetUserId = aliceUid)
+        }
+        assertTrue(bobReadAttempt.isFailure)
+        val ex = bobReadAttempt.exceptionOrNull() as? FirebaseFirestoreException
+        assertEquals(FirebaseFirestoreException.Code.PERMISSION_DENIED, ex?.code)
+    }
+
     private companion object {
         const val ALICE_EMAIL = "alice@edam.test"
         const val BOB_EMAIL = "bob@edam.test"

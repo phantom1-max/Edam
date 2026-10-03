@@ -45,6 +45,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.LocalFireDepartment
@@ -52,12 +54,15 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MilitaryTech
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.WorkspacePremium
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -121,6 +126,8 @@ import com.example.data.model.BadgeDisplayItem
 import com.example.data.model.PlanTier
 import com.example.notification.DailyGoalReminderScheduler
 import com.example.notification.EdamNotificationHelper
+import com.example.ui.theme.EdamFullThemeSwitcherCard
+import com.example.ui.theme.EdamThemeMode
 import com.example.ui.theme.LocalEdamThemeSpec
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -145,6 +152,8 @@ fun UserProfileDialog(
     dailyStreak: DailyStreakState? = null,
     selectedCompanion: EdamCompanionCharacter = EdamCompanionCharacter.EDAM,
     onSelectCompanion: (EdamCompanionCharacter) -> Unit = {},
+    themeMode: EdamThemeMode = EdamThemeMode.SYSTEM_DEFAULT,
+    onSelectTheme: (EdamThemeMode) -> Unit = {},
     onCheckInStreak: (() -> Unit)? = null,
     onToggleStreakFreeze: (() -> Unit)? = null,
     dailyLessonGoal: Int? = null,
@@ -159,6 +168,7 @@ fun UserProfileDialog(
     onTriggerImmediateGoalReminder: (() -> Unit)? = null,
     onTogglePushNotifications: (Boolean) -> Unit,
     onSendTestNotification: () -> Unit,
+    onSyncBadgesToFirestore: (() -> Unit)? = null,
     onClose: () -> Unit
 ) {
     BackHandler { onClose() }
@@ -482,7 +492,15 @@ fun UserProfileDialog(
                         )
                     }
 
-                    // 3. Local Storage Badge Showcase Header & Filter Tabs
+                    // 3. Theme Switcher Component (Toggle between Light & Dark Modes across platforms)
+                    item(key = "theme_switcher_section") {
+                        EdamFullThemeSwitcherCard(
+                            currentMode = themeMode,
+                            onSelectMode = onSelectTheme
+                        )
+                    }
+
+                    // 4. Local Storage Badge Showcase Header & Filter Tabs
                     item(key = "badges_header") {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             Row(
@@ -507,29 +525,55 @@ fun UserProfileDialog(
                                     )
                                 }
 
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.secondaryContainer
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.primaryContainer
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.Storage,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(14.dp),
-                                            tint = MaterialTheme.colorScheme.onSecondaryContainer
-                                        )
-                                        Text(
-                                            text = "Room SQLite",
-                                            style = MaterialTheme.typography.labelMedium.copy(
-                                                fontFamily = FontFamily.Monospace,
-                                                fontSize = 11.sp
-                                            ),
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.CloudDone,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(13.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = "Firestore Cloud",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 11.sp
+                                                ),
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
+                                    }
+
+                                    if (onSyncBadgesToFirestore != null) {
+                                        OutlinedButton(
+                                            onClick = onSyncBadgesToFirestore,
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(28.dp).testTag("sync_badges_button")
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Sync,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Sync",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1688,7 +1732,11 @@ private fun BadgeCardItem(
             "titan" -> Icons.Filled.MilitaryTech
             "adept" -> Icons.Filled.Star
             "scholar" -> Icons.Filled.School
-            "market_bull" -> Icons.Filled.Verified
+            "market_bull", "candlestick" -> Icons.AutoMirrored.Filled.TrendingUp
+            "flame_3", "flame_7" -> Icons.Filled.LocalFireDepartment
+            "chess_knight" -> Icons.Filled.WorkspacePremium
+            "code_virus" -> Icons.Filled.Code
+            "polymath" -> Icons.Filled.Psychology
             else -> Icons.Filled.EmojiEvents
         }
     }
@@ -1759,10 +1807,25 @@ private fun BadgeCardItem(
                         )
                         Surface(
                             shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                        ) {
+                            Text(
+                                text = def.category,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
                             color = categoryColor.copy(alpha = 0.15f)
                         ) {
                             Text(
-                                text = "${def.percentageRequired}% Milestone",
+                                text = "${def.percentageRequired}% Goal",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold,
@@ -1799,7 +1862,7 @@ private fun BadgeCardItem(
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
-                                text = stringResource(R.string.profile_badge_status_unlocked),
+                                text = "Unlocked · ☁️ Synced",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onTertiaryContainer
                             )

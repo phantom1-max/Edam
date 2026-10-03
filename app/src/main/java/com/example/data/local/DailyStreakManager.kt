@@ -2,6 +2,7 @@ package com.example.data.local
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.data.remote.CloudDailyStreakDoc
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,8 +19,12 @@ data class DailyStreakState(
     val flashcardsReviewedCount: Int = 0,
     val chessPuzzlesSolvedCount: Int = 0,
     val streakFreezeActive: Boolean = true,
-    val streakFreezesAvailable: Int = 2
+    val streakFreezesAvailable: Int = 2,
+    val isCloudSynced: Boolean = false
 ) {
+    val weeklyStudyDaysCsv: String
+        get() = weeklyStudyDays.joinToString(",") { if (it) "1" else "0" }
+
     val xpLevel: Int
         get() = (totalXp / 250) + 1
 
@@ -74,6 +79,7 @@ class DailyStreakManager(context: Context) {
         private const val KEY_CHESS_PUZZLES_SOLVED = "chess_puzzles_solved_count"
         private const val KEY_STREAK_FREEZE_ACTIVE = "streak_freeze_active"
         private const val KEY_STREAK_FREEZES_AVAILABLE = "streak_freezes_available"
+        private const val KEY_CLOUD_SYNCED = "streak_cloud_synced"
 
         fun currentEpochDay(nowMillis: Long = System.currentTimeMillis()): Long {
             return TimeUnit.MILLISECONDS.toDays(nowMillis)
@@ -141,6 +147,7 @@ class DailyStreakManager(context: Context) {
         val chessSolved = prefs.getInt(KEY_CHESS_PUZZLES_SOLVED, 0)
         val freezeActive = prefs.getBoolean(KEY_STREAK_FREEZE_ACTIVE, true)
         val freezesAvailable = prefs.getInt(KEY_STREAK_FREEZES_AVAILABLE, 2)
+        val isCloudSynced = prefs.getBoolean(KEY_CLOUD_SYNCED, false)
         val studiedToday = (lastDay == today)
 
         val csv = prefs.getString(KEY_WEEKLY_DAYS_CSV, "1,1,1,0,0,0,0") ?: "1,1,1,0,0,0,0"
@@ -160,8 +167,51 @@ class DailyStreakManager(context: Context) {
             flashcardsReviewedCount = flashcards,
             chessPuzzlesSolvedCount = chessSolved,
             streakFreezeActive = freezeActive,
-            streakFreezesAvailable = freezesAvailable
+            streakFreezesAvailable = freezesAvailable,
+            isCloudSynced = isCloudSynced
         )
+    }
+
+    fun applyCloudStreakDoc(
+        cloudDoc: CloudDailyStreakDoc,
+        nowMillis: Long = System.currentTimeMillis()
+    ): DailyStreakState {
+        val local = loadStateFromPrefs(nowMillis)
+        val mergedLastDay = maxOf(local.lastStudyEpochDay, cloudDoc.lastStudyEpochDay)
+        val mergedCurrent = if (cloudDoc.lastStudyEpochDay >= local.lastStudyEpochDay) {
+            maxOf(local.currentStreak, cloudDoc.currentStreak)
+        } else {
+            local.currentStreak
+        }
+        val mergedLongest = maxOf(local.longestStreak, cloudDoc.longestStreak, mergedCurrent)
+        val mergedXp = maxOf(local.totalXp, cloudDoc.totalXp)
+        val cloudDays = cloudDoc.weeklyStudyDaysCsv.split(",").map { it.trim() == "1" }
+        val mergedDays = List(7) { idx ->
+            (local.weeklyStudyDays.getOrElse(idx) { false }) || (cloudDays.getOrElse(idx) { false })
+        }
+        val mergedCsv = mergedDays.joinToString(",") { if (it) "1" else "0" }
+
+        prefs.edit()
+            .putInt(KEY_CURRENT_STREAK, mergedCurrent)
+            .putInt(KEY_LONGEST_STREAK, mergedLongest)
+            .putLong(KEY_LAST_STUDY_EPOCH_DAY, mergedLastDay)
+            .putInt(KEY_TOTAL_XP, mergedXp)
+            .putString(KEY_WEEKLY_DAYS_CSV, mergedCsv)
+            .putBoolean(KEY_STREAK_FREEZE_ACTIVE, cloudDoc.streakFreezeActive)
+            .putInt(KEY_STREAK_FREEZES_AVAILABLE, cloudDoc.streakFreezesAvailable)
+            .putBoolean(KEY_CLOUD_SYNCED, true)
+            .apply()
+
+        val updated = loadStateFromPrefs(nowMillis)
+        _streakState.value = updated
+        return updated
+    }
+
+    fun markCloudSynced(synced: Boolean = true): DailyStreakState {
+        prefs.edit().putBoolean(KEY_CLOUD_SYNCED, synced).apply()
+        val updated = loadStateFromPrefs()
+        _streakState.value = updated
+        return updated
     }
 
     fun toggleStreakFreeze(): DailyStreakState {

@@ -1,29 +1,55 @@
-# Edam — Learn Anything (Android)
+# Edam — Learn Anything (Android & Multi-Platform PC)
 
-Edam is an AI-powered interactive learning application for Android built with Kotlin, Jetpack Compose (Material 3), Room, and Retrofit.
+Edam is an AI-powered interactive learning application built with Kotlin, Jetpack Compose (Material 3), Firebase Firestore, Room Database, and Retrofit.
 
 ## Features
 
-- **Course Generation with Gemini**: Enter a subject, proficiency level (`Beginner` through `Professional`), and learning goal to generate a structured 5–8 unit curriculum with learning outcomes.
-- **On-Demand Interactive Lessons**: Open any lesson to generate in-depth teaching sections, highlighted examples, and a lesson summary.
-- **Practice Quizzes with Instant Feedback**: Test comprehension with multiple-choice questions and detailed answer explanations.
-- **Local Progress & Curriculum Persistence**: Courses, cached lessons, and completed lesson progress are persisted locally using Room Database.
+- **Daily Learning Streak with Firestore Cloud Sync**: Tracks consecutive days of learning activity both in local preferences and in Firebase Firestore (`/users/{userId}/streaks/daily`). Features a prominent flame icon with current streak counter on the home dashboard, streak freeze protection, and a 7-day consistency strip.
+- **4 Distinct Companions with Cursor Eye-Tracking**:
+  - **Edam**: Golden Dutch Cheese Wheel & Botanical Sprout with rosy cheek dimples.
+  - **Kora**: Quant Bull Fox with pointed crimson ears, curved gold bull horns, fluffy emerald-tipped tail, and Wall Street tie.
+  - **Vex**: Grandmaster Owl with feathered purple wings, tufted brow plumes, golden spectacles, diamond beak, and GM chess crown.
+  - **Nova**: Futuristic Cyber Synth Bot with a hexagonal chassis, dark LED visor faceplate, side plasma ear-pods, and anti-gravity hover rings.
+  - **Idle Cursor Eye-Tracking**: When companions are doing nothing (in `IDLE` state with no active animation), their body remains still while their eyes smoothly follow mouse cursor movements across the screen on PC, ChromeOS, and touch devices.
+- **User-Defined Daily Lesson Goal**: Configure daily targets (1–10 lessons/day) backed by Jetpack DataStore with real-time progress bars.
+- **Push Notification Goal Reminders**: Scheduled via Android WorkManager to remind learners at custom times.
+- **Course Generation with Gemini**: Enter a subject, proficiency level (`Beginner` through `Professional`), and learning goal to generate structured curricula with learning outcomes.
+- **On-Demand Interactive Lessons & Quizzes**: Complete interactive lessons, test comprehension with quizzes, and earn badges.
 
-## Configuration
+## Pre-Built APK in Repository
 
-- Configure `GEMINI_API_KEY` in the **Secrets panel in AI Studio** (mapped via `.env` / `.env.example` and Secrets Gradle Plugin to `BuildConfig.GEMINI_API_KEY`).
-- When `GEMINI_API_KEY` is not yet set, the app falls back to the original Edam Cloudflare Worker endpoint (`https://edam-ai.rup62012.workers.dev/`).
+The Android APK is compiled and directly available in the repository under the `releases/` directory:
+- `releases/edam-android-latest.apk`: Ready to install or sideload immediately on Android.
+- `releases/edam-android-v1.2.0.apk`: Versioned release archive.
 
-## Authentication
+## Editable Versions & Multi-Platform Release (Windows, macOS, Linux, Android)
 
-- Email accounts use email and password; phone accounts use SMS one-time codes.
-- Google, Apple, Facebook, and GitHub use their Firebase Authentication providers.
-- Users must acknowledge the Terms and Conditions on the sign-in screen before an authentication flow can start.
-- Add the Firebase Android configuration file as `app/google-services.json`. In Firebase Authentication, enable Email/Password, Phone, Google, Apple, Facebook, and GitHub, and configure each provider's credentials and redirect settings in the Firebase console.
+You can easily bump versions and trigger builds for **Android**, **Windows**, **macOS**, and **Linux**:
 
-## Signed APK releases
+1. **Edit `release-config.env`** in the root directory:
+   ```env
+   APP_VERSION_NAME=1.3.0
+   APP_VERSION_CODE=4
+   RELEASE_TAG=v1.3.0
+   RELEASE_TITLE=Edam v1.3.0 — Multi-Platform Release
+   BUILD_ANDROID_APK=true
+   BUILD_WINDOWS_PC=true
+   BUILD_MACOS_PC=true
+   BUILD_LINUX_PC=true
+   ```
+2. Commit and push the file to GitHub.
+3. The GitHub Actions workflow (`.github/workflows/release-apk.yml`) will:
+   - Build the Android APK and commit it to `releases/`.
+   - Build desktop packages from `desktop-pc/` for **Windows** (`.msi` / `.exe`), **macOS** (`.dmg`), and **Linux** (`.deb`).
+   - Create a GitHub Release with all platform installers attached.
 
-The `Android APK Release` GitHub Actions workflow builds and attaches a signed APK to a GitHub Release when dispatched or when a `v*` tag is pushed. Configure these repository Actions secrets before running it:
+## Running the Desktop PC Version Locally
 
-- `FIREBASE_CONFIG_JSON_BASE64`: base64-encoded Firebase `google-services.json` for this app's application ID.
-- `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`: the release signing keystore and credentials. Keep a durable backup of this keystore; future updates must use the same signing identity.
+The standalone desktop project is located in `desktop-pc/`:
+```bash
+# Run on Windows, macOS, or Linux
+gradle -p desktop-pc run
+
+# Package native installer for your current OS
+gradle -p desktop-pc packageDistributionForCurrentOS
+```
