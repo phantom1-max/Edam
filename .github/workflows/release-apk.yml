@@ -141,7 +141,6 @@ jobs:
             platform: macos
             enabled: ${{ needs.read-config.outputs.build_macos }}
     runs-on: ${{ matrix.os }}
-    if: matrix.enabled == 'true'
     steps:
       - uses: actions/checkout@v4
 
