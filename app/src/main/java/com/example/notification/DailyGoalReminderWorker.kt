@@ -57,7 +57,9 @@ class DailyGoalReminderWorker(
                 ?: inputData.getInt(KEY_REMINDER_MINUTE, 0)).coerceIn(0, 59)
 
             val streakManager = DailyStreakManager(applicationContext)
-            val currentStreak = streakManager.streakState.value.currentStreak
+            val streakState = streakManager.streakState.value
+            val currentStreak = streakState.currentStreak
+            val studiedToday = streakState.studiedToday
 
             val formattedTime = DailyGoalReminderScheduler.formatTime12Hour(hour24, minute)
 
@@ -68,6 +70,15 @@ class DailyGoalReminderWorker(
                 currentStreak = currentStreak,
                 scheduledTimeLabel = formattedTime
             )
+
+            // Alert user with streak protection push notification if not studied today
+            if (!studiedToday) {
+                EdamNotificationHelper.sendDailyStreakReminderNotification(
+                    context = applicationContext,
+                    currentStreak = currentStreak,
+                    studiedToday = false
+                )
+            }
 
             Result.success()
         } catch (e: Exception) {
@@ -220,5 +231,18 @@ object DailyGoalReminderScheduler {
      */
     fun cancelDailyGoalReminder(context: Context) {
         WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_PERIODIC_WORK_NAME)
+    }
+
+    /**
+     * Instantly dispatches a test or real-time daily study streak push notification.
+     */
+    fun triggerImmediateStreakReminder(context: Context) {
+        val streakManager = DailyStreakManager(context)
+        val streakState = streakManager.streakState.value
+        EdamNotificationHelper.sendDailyStreakReminderNotification(
+            context = context,
+            currentStreak = streakState.currentStreak,
+            studiedToday = streakState.studiedToday
+        )
     }
 }

@@ -245,7 +245,7 @@ private fun requestPhoneOtp(
             }
         }
 
-        override fun onVerificationFailed(error: Exception) {
+        override fun onVerificationFailed(error: com.google.firebase.FirebaseException) {
             onError(error.localizedMessage ?: "Could not send the verification code")
         }
 

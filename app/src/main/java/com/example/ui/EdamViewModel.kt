@@ -18,8 +18,11 @@ import com.example.data.local.EarnedBadgeEntity
 import com.example.data.local.EdamDatabase
 import com.example.data.model.BadgeCatalog
 import com.example.data.model.BadgeDisplayItem
+import com.example.data.model.ChessAndFlashcardCatalog
 import com.example.data.model.Course
 import com.example.data.model.CourseUnit
+import com.example.data.model.DiscoverCatalog
+import com.example.data.model.DiscoverSubject
 import com.example.data.model.LessonContent
 import com.example.data.model.LessonSummary
 import com.example.data.model.MarketChartType
@@ -251,7 +254,12 @@ data class EdamUiState(
     val dailyLessonsCompletedToday: Int = 1,
     val dailyReminderEnabled: Boolean = true,
     val dailyReminderHour: Int = 20,
-    val dailyReminderMinute: Int = 0
+    val dailyReminderMinute: Int = 0,
+    val discoverSearchQuery: String = "",
+    val discoverSelectedCategory: String = "All",
+    val userAddedSubjects: List<DiscoverSubject> = emptyList(),
+    val showAddSubjectDialog: Boolean = false,
+    val isAddingSubject: Boolean = false
 ) {
     val dailyLessonGoalProgress: Float
         get() = (dailyLessonsCompletedToday.toFloat() / dailyLessonGoal.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
@@ -501,6 +509,30 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    private data class DiscoverSubjectCombined(
+        val query: String,
+        val category: String,
+        val userAdded: List<DiscoverSubject>,
+        val showDialog: Boolean,
+        val isAdding: Boolean
+    )
+
+    private val discoverSearchQueryFlow = MutableStateFlow("")
+    private val discoverSelectedCategoryFlow = MutableStateFlow("All")
+    private val userAddedSubjectsFlow = MutableStateFlow<List<DiscoverSubject>>(emptyList())
+    private val showAddSubjectDialogFlow = MutableStateFlow(false)
+    private val isAddingSubjectFlow = MutableStateFlow(false)
+
+    private val discoverStateFlow = combine(
+        discoverSearchQueryFlow,
+        discoverSelectedCategoryFlow,
+        userAddedSubjectsFlow,
+        showAddSubjectDialogFlow,
+        isAddingSubjectFlow
+    ) { query, cat, userAdded, showDialog, isAdding ->
+        DiscoverSubjectCombined(query, cat, userAdded, showDialog, isAdding)
+    }
+
     private val companionAndStreakFlow = combine(
         dailyStreakManager.streakState,
         selectedCompanionFlow
@@ -543,6 +575,14 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         state.copy(
             dailyStreak = streak,
             selectedCompanion = companion
+        )
+    }.combine(discoverStateFlow) { state, disc ->
+        state.copy(
+            discoverSearchQuery = disc.query,
+            discoverSelectedCategory = disc.category,
+            userAddedSubjects = disc.userAdded,
+            showAddSubjectDialog = disc.showDialog,
+            isAddingSubject = disc.isAdding
         )
     }.stateIn(
         scope = viewModelScope,
@@ -786,6 +826,124 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
         marketState.update { it.copy(isLiveFeedActive = !it.isLiveFeedActive) }
     }
 
+    fun onDiscoverSearchQueryChange(query: String) {
+        discoverSearchQueryFlow.value = query
+    }
+
+    fun onDiscoverSelectedCategoryChange(category: String) {
+        discoverSelectedCategoryFlow.value = category
+    }
+
+    fun toggleAddSubjectDialog(show: Boolean) {
+        showAddSubjectDialogFlow.value = show
+    }
+
+    fun addNewDiscoverSubject(
+        title: String,
+        category: String,
+        level: String,
+        goal: String,
+        onSuccess: () -> Unit = {}
+    ) {
+        val cleanTitle = title.trim()
+        val cleanCategory = category.trim().ifBlank { "Technology & AI" }
+        val cleanLevel = level.trim().ifBlank { "Beginner" }
+        val cleanGoal = goal.trim().ifBlank { "Master fundamental and applied concepts in $cleanTitle" }
+
+        if (cleanTitle.isBlank()) return
+
+        isAddingSubjectFlow.value = true
+        viewModelScope.launch {
+            try {
+                val created = repository.createAndSaveCourse(
+                    courseName = cleanTitle,
+                    level = cleanLevel,
+                    goal = cleanGoal
+                )
+
+                var cloudSynced = false
+                val currentUser = try { Firebase.auth.currentUser } catch (_: Exception) { null }
+                if (currentUser != null) {
+                    try {
+                        cloudRepository.saveCloudCourse(
+                            courseId = created.id,
+                            title = created.title,
+                            level = created.level,
+                            goal = created.goal,
+                            courseJson = "{}",
+                            completedLessonsJson = "[]",
+                            offlineLessonsJson = "{}"
+                        )
+                        cloudSynced = true
+                    } catch (e: Exception) {
+                        Log.w("EdamViewModel", "Could not sync new subject to Firestore", e)
+                    }
+                }
+
+                val iconKey = when {
+                    cleanCategory.contains("Tech", true) || cleanCategory.contains("AI", true) -> "psychology"
+                    cleanCategory.contains("Finance", true) || cleanCategory.contains("Market", true) -> "trending_up"
+                    cleanCategory.contains("Strategy", true) || cleanCategory.contains("Logic", true) -> "military_tech"
+                    cleanCategory.contains("Science", true) || cleanCategory.contains("Math", true) -> "science"
+                    else -> "menu_book"
+                }
+
+                val newSub = DiscoverSubject(
+                    id = created.id,
+                    title = created.title,
+                    category = cleanCategory,
+                    level = created.level,
+                    description = created.goal,
+                    unitsCount = created.units.size.coerceAtLeast(3),
+                    xpReward = 60,
+                    isUserAdded = true,
+                    isCloudSynced = cloudSynced,
+                    iconKey = iconKey,
+                    tagList = listOf("User Added", cleanLevel, cleanCategory.split(" ").first())
+                )
+
+                userAddedSubjectsFlow.update { current ->
+                    listOf(newSub) + current.filter { it.id != newSub.id }
+                }
+                repository.selectCourse(created.id)
+                dailyStreakManager.recordStudyActivity(xpEarned = 35)
+                repository.awardLeaderboardXp(35)
+                showAddSubjectDialogFlow.value = false
+                isAddingSubjectFlow.value = false
+                onSuccess()
+            } catch (e: Exception) {
+                Log.e("EdamViewModel", "Failed to add discover subject", e)
+                isAddingSubjectFlow.value = false
+            }
+        }
+    }
+
+    fun launchOrSelectDiscoverSubject(
+        subject: DiscoverSubject,
+        onReady: () -> Unit
+    ) {
+        viewModelScope.launch {
+            val allCourses = repository.allCoursesFlow.first()
+            val existing = allCourses.find { 
+                it.id == subject.id || it.title.equals(subject.title, ignoreCase = true) 
+            }
+            if (existing != null) {
+                repository.selectCourse(existing.id)
+                onReady()
+            } else {
+                val created = repository.createAndSaveCourse(
+                    courseName = subject.title,
+                    level = subject.level,
+                    goal = subject.description
+                )
+                repository.selectCourse(created.id)
+                dailyStreakManager.recordStudyActivity(xpEarned = 25)
+                repository.awardLeaderboardXp(25)
+                onReady()
+            }
+        }
+    }
+
     fun launchOrSelectTickerCourse(
         ticker: TrendingCourseTicker,
         onScrollToCourse: () -> Unit,
@@ -904,6 +1062,32 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
                     syncBadgesToFirestore()
                 } catch (e: Exception) {
                     Log.w("EdamViewModel", "Failed to sync badges with Firestore", e)
+                }
+
+                // Sync User Added Courses / Subjects from Firestore
+                try {
+                    val cloudCourses = cloudRepository.observeUserCourses(user.uid).first()
+                    val cloudSubjects = cloudCourses.map { cc ->
+                        DiscoverSubject(
+                            id = cc.id,
+                            title = cc.title,
+                            category = "Cloud Subject",
+                            level = cc.level,
+                            description = cc.goal,
+                            unitsCount = 4,
+                            xpReward = 60,
+                            isUserAdded = true,
+                            isCloudSynced = true,
+                            iconKey = "cloud_done",
+                            tagList = listOf("User Added", "Cloud Synced", cc.level)
+                        )
+                    }
+                    userAddedSubjectsFlow.update { current ->
+                        val remoteIds = cloudSubjects.map { it.id }.toSet()
+                        cloudSubjects + current.filter { it.id !in remoteIds }
+                    }
+                } catch (e: Exception) {
+                    Log.w("EdamViewModel", "Failed to sync user courses from Firestore", e)
                 }
             } catch (e: Exception) {
                 Log.w("EdamViewModel", "Failed to sync user account with Firestore", e)
@@ -1137,6 +1321,13 @@ class EdamViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleStreakFreeze() {
         val updated = dailyStreakManager.toggleStreakFreeze()
         syncDailyStreakToFirestore(updated)
+    }
+
+    fun triggerDailyStreakReminderPush(context: Context) {
+        DailyGoalReminderScheduler.triggerImmediateStreakReminder(context)
+        formState.update {
+            it.copy(statusMessage = "🔥 Daily study streak push notification sent!")
+        }
     }
 
     fun setDailyLessonGoal(targetLessons: Int) {

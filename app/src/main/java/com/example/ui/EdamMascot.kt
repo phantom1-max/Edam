@@ -34,6 +34,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,14 +52,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
@@ -75,6 +79,8 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 
 /**
  * Global/Window cursor position in root coordinates.
@@ -356,100 +362,366 @@ fun EdamMascot(
         contentAlignment = Alignment.Center
     ) {
         if (character == EdamCompanionCharacter.EDAM) {
-            Image(
-                painter = painterResource(R.drawable.edam_main_mascot),
-                contentDescription = characterDesc,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
+            AnimatedHeroEdamCharacter(
+                expression = activeExpression,
+                isIdle = isCompletelyIdle,
+                sparklePulse = sparklePulse,
+                tapCounter = tapCounter,
+                lookX = smoothLookX,
+                lookY = smoothLookY,
+                showTablet = showTablet
             )
         } else {
             Canvas(modifier = Modifier.fillMaxSize()) {
-            val canvasW = this.size.width
-            val canvasH = this.size.height
-            val cx = canvasW / 2f
-            val cy = canvasH / 2f + effectiveBounceY
-            val baseR = canvasW.coerceAtMost(canvasH) * 0.35f
+                val canvasW = this.size.width
+                val canvasH = this.size.height
+                val cx = canvasW / 2f
+                val cy = canvasH / 2f + effectiveBounceY
+                val baseR = canvasW.coerceAtMost(canvasH) * 0.35f
 
-            // Shadow on ground
-            val shadowW = baseR * 1.55f * (if (isCompletelyIdle) 1.0f else (2f - effectiveScale))
-            val shadowH = baseR * 0.24f
-            drawOval(
-                color = Color(0xFF000000).copy(alpha = if (isCompletelyIdle) 0.16f else 0.12f),
-                topLeft = Offset(cx - shadowW / 2f, canvasH * 0.88f),
-                size = Size(shadowW, shadowH)
-            )
+                // Shadow on ground
+                val shadowW = baseR * 1.55f * (if (isCompletelyIdle) 1.0f else (2f - effectiveScale))
+                val shadowH = baseR * 0.24f
+                drawOval(
+                    color = Color(0xFF000000).copy(alpha = if (isCompletelyIdle) 0.16f else 0.12f),
+                    topLeft = Offset(cx - shadowW / 2f, canvasH * 0.88f),
+                    size = Size(shadowW, shadowH)
+                )
 
-            rotate(degrees = effectiveTilt, pivot = Offset(cx, cy)) {
-                scale(scaleX = effectiveScale, scaleY = effectiveScale, pivot = Offset(cx, cy)) {
-                    when (character) {
-                        EdamCompanionCharacter.EDAM -> drawEdamCheeseSprout(
-                            cx = cx,
-                            cy = cy,
-                            baseR = baseR,
-                            expression = activeExpression,
-                            isIdle = isCompletelyIdle,
-                            armWave = effectiveArmWave,
-                            eyeScaleY = eyeScaleY,
-                            lookX = smoothLookX,
-                            lookY = smoothLookY,
-                            sparklePulse = sparklePulse,
-                            showTablet = showTablet
-                        )
-                        EdamCompanionCharacter.KORA -> drawKoraFlameSprout(
-                            cx = cx,
-                            cy = cy,
-                            baseR = baseR,
-                            expression = activeExpression,
-                            isIdle = isCompletelyIdle,
-                            armWave = effectiveArmWave,
-                            eyeScaleY = eyeScaleY,
-                            lookX = smoothLookX,
-                            lookY = smoothLookY,
-                            sparklePulse = sparklePulse,
-                            showTablet = showTablet
-                        )
-                        EdamCompanionCharacter.VEX -> drawVexCrystalSprout(
-                            cx = cx,
-                            cy = cy,
-                            baseR = baseR,
-                            expression = activeExpression,
-                            isIdle = isCompletelyIdle,
-                            armWave = effectiveArmWave,
-                            eyeScaleY = eyeScaleY,
-                            lookX = smoothLookX,
-                            lookY = smoothLookY,
-                            sparklePulse = sparklePulse,
-                            showTablet = showTablet
-                        )
-                        EdamCompanionCharacter.NOVA -> drawNovaPulseSprout(
-                            cx = cx,
-                            cy = cy,
-                            baseR = baseR,
-                            expression = activeExpression,
-                            isIdle = isCompletelyIdle,
-                            armWave = effectiveArmWave,
-                            eyeScaleY = eyeScaleY,
-                            lookX = smoothLookX,
-                            lookY = smoothLookY,
-                            sparklePulse = sparklePulse,
-                            showTablet = showTablet
-                        )
-                    }
+                rotate(degrees = effectiveTilt, pivot = Offset(cx, cy)) {
+                    scale(scaleX = effectiveScale, scaleY = effectiveScale, pivot = Offset(cx, cy)) {
+                        when (character) {
+                            EdamCompanionCharacter.EDAM -> {}
+                            EdamCompanionCharacter.KORA -> drawKoraFlameSprout(
+                                cx = cx,
+                                cy = cy,
+                                baseR = baseR,
+                                expression = activeExpression,
+                                isIdle = isCompletelyIdle,
+                                armWave = effectiveArmWave,
+                                eyeScaleY = eyeScaleY,
+                                lookX = smoothLookX,
+                                lookY = smoothLookY,
+                                sparklePulse = sparklePulse,
+                                showTablet = showTablet
+                            )
+                            EdamCompanionCharacter.VEX -> drawVexCrystalSprout(
+                                cx = cx,
+                                cy = cy,
+                                baseR = baseR,
+                                expression = activeExpression,
+                                isIdle = isCompletelyIdle,
+                                armWave = effectiveArmWave,
+                                eyeScaleY = eyeScaleY,
+                                lookX = smoothLookX,
+                                lookY = smoothLookY,
+                                sparklePulse = sparklePulse,
+                                showTablet = showTablet
+                            )
+                            EdamCompanionCharacter.NOVA -> drawNovaPulseSprout(
+                                cx = cx,
+                                cy = cy,
+                                baseR = baseR,
+                                expression = activeExpression,
+                                isIdle = isCompletelyIdle,
+                                armWave = effectiveArmWave,
+                                eyeScaleY = eyeScaleY,
+                                lookX = smoothLookX,
+                                lookY = smoothLookY,
+                                sparklePulse = sparklePulse,
+                                showTablet = showTablet
+                            )
+                        }
 
-                    // Expression Overlays (Sparkles, Question Mark, Zzz) when not idle
-                    if (!isCompletelyIdle) {
-                        drawExpressionParticles(
-                            cx = cx,
-                            cy = cy,
-                            baseR = baseR,
-                            expression = activeExpression,
-                            character = character,
-                            sparklePulse = sparklePulse
-                        )
+                        // Expression Overlays (Sparkles, Question Mark, Zzz) when not idle
+                        if (!isCompletelyIdle) {
+                            drawExpressionParticles(
+                                cx = cx,
+                                cy = cy,
+                                baseR = baseR,
+                                expression = activeExpression,
+                                character = character,
+                                sparklePulse = sparklePulse
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * Animated main Edam character using the reference mascot image with transparent background.
+ * Implements subtle, premium animations:
+ * - Natural blinking with organic timing
+ * - Gentle breathing / body movement
+ * - Small head and neck movements with responsive tilts
+ * - Subtle eye movement with cursor tracking & idle glances
+ * - Occasional idle gestures
+ * - Appropriate reactions when loading, generating, succeeding, or interacting
+ * - Smooth spring transitions between expressions
+ */
+@Composable
+fun AnimatedHeroEdamCharacter(
+    modifier: Modifier = Modifier,
+    expression: EdamExpression,
+    isIdle: Boolean,
+    sparklePulse: Float,
+    tapCounter: Int,
+    lookX: Float = 0f,
+    lookY: Float = 0f,
+    showTablet: Boolean = false
+) {
+    var isBlinking by remember { mutableStateOf(false) }
+
+    LaunchedEffect(expression) {
+        if (expression == EdamExpression.SLEEP || expression == EdamExpression.SLEEPING) {
+            isBlinking = true
+            return@LaunchedEffect
+        }
+        while (isActive) {
+            val nextDelay = kotlin.random.Random.nextLong(3000L, 4800L)
+            delay(nextDelay)
+            isBlinking = true
+            delay(120L)
+            isBlinking = false
+        }
+    }
+
+    val blinkProgress by animateFloatAsState(
+        targetValue = if (isBlinking || expression == EdamExpression.SLEEP || expression == EdamExpression.SLEEPING) 1f else 0f,
+        animationSpec = tween(durationMillis = 75, easing = FastOutSlowInEasing),
+        label = "hero_blink"
+    )
+
+    // Occasional subtle idle gesture (gentle thoughtful micro-nod)
+    var idleGestureNod by remember { mutableStateOf(0f) }
+    LaunchedEffect(isIdle) {
+        if (!isIdle) return@LaunchedEffect
+        while (isActive) {
+            delay(kotlin.random.Random.nextLong(6500L, 9500L))
+            idleGestureNod = 1.6f
+            delay(380L)
+            idleGestureNod = 0f
+        }
+    }
+    val animatedGestureNod by animateFloatAsState(
+        targetValue = idleGestureNod,
+        animationSpec = spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessLow),
+        label = "hero_gesture_nod"
+    )
+
+    val infiniteTransition = rememberInfiniteTransition(label = "hero_edam_anim")
+
+    // Gentle breathing: smooth, restrained expansion/contraction
+    val breatheScale by infiniteTransition.animateFloat(
+        initialValue = if (isIdle) 0.994f else 0.988f,
+        targetValue = if (isIdle) 1.006f else 1.012f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2300, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "hero_breathe"
+    )
+
+    // Gentle vertical floating/bobbing
+    val idleFloatY by infiniteTransition.animateFloat(
+        initialValue = if (isIdle) -1.2f else -2.2f,
+        targetValue = if (isIdle) 1.2f else 2.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2700, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "hero_float"
+    )
+
+    // Small head movements: subtle natural tilt
+    val headTilt by infiniteTransition.animateFloat(
+        initialValue = if (isIdle) -0.9f else -1.4f,
+        targetValue = if (isIdle) 0.9f else 1.4f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "hero_head_tilt"
+    )
+
+    // Smooth expression transitions
+    val expressionBounceY by animateFloatAsState(
+        targetValue = when (expression) {
+            EdamExpression.CELEBRATING, EdamExpression.SUCCESS -> -7f
+            EdamExpression.HAPPY -> -2.5f
+            EdamExpression.WORKING -> 1.5f
+            EdamExpression.THINKING, EdamExpression.CURIOUS -> -1.5f
+            else -> 0f
+        },
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+        label = "hero_expr_bounce"
+    )
+
+    val expressionTilt by animateFloatAsState(
+        targetValue = when (expression) {
+            EdamExpression.THINKING, EdamExpression.CURIOUS -> 2.6f
+            EdamExpression.WORKING -> -1.6f
+            EdamExpression.CELEBRATING -> -2.0f
+            EdamExpression.SUCCESS -> 2.0f
+            else -> 0f
+        },
+        animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessLow),
+        label = "hero_expr_tilt"
+    )
+
+    // Tap squash & stretch for interactive response
+    val tapSquash by animateFloatAsState(
+        targetValue = if (tapCounter % 2 == 1) 1.045f else 1.0f,
+        animationSpec = spring(dampingRatio = 0.48f, stiffness = Spring.StiffnessMedium),
+        label = "hero_tap_squash"
+    )
+
+    val density = LocalDensity.current.density
+
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        // 1. Ground soft ambient shadow responding to breathing
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val shadowW = w * 0.58f * (2f - breatheScale)
+            val shadowH = h * 0.10f * (2f - breatheScale)
+            drawOval(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0xFF000000).copy(alpha = 0.22f), Color.Transparent),
+                    center = Offset(w / 2f, h * 0.91f),
+                    radius = shadowW / 2f
+                ),
+                topLeft = Offset(w / 2f - shadowW / 2f, h * 0.91f - shadowH / 2f),
+                size = Size(shadowW, shadowH)
+            )
+        }
+
+        // 2. Main Mascot Image with natural animated transforms
+        Image(
+            painter = painterResource(R.drawable.edam_main_mascot),
+            contentDescription = "Edam Mascot",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = breatheScale * tapSquash
+                    scaleY = breatheScale * (2f - tapSquash)
+                    translationY = (idleFloatY + expressionBounceY + animatedGestureNod) * density
+                    rotationZ = headTilt + expressionTilt
+                    transformOrigin = TransformOrigin(0.5f, 0.48f)
+                }
+        )
+
+        // 3. Animated facial expressions: blinking, smiling arcs, sleeping Zzz, subtle gaze tracking
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = breatheScale * tapSquash
+                    scaleY = breatheScale * (2f - tapSquash)
+                    translationY = (idleFloatY + expressionBounceY + animatedGestureNod) * density
+                    rotationZ = headTilt + expressionTilt
+                    transformOrigin = TransformOrigin(0.5f, 0.48f)
+                }
+        ) {
+            val w = size.width
+            val h = size.height
+            val cx = w * 0.50f
+
+            // Calibrated exact positions of eyes on edam_main_mascot (3/4 angle facing)
+            val leftEyeX = cx - (w * 0.12f) + (lookX * 0.28f)
+            val rightEyeX = cx + (w * 0.17f) + (lookX * 0.28f)
+            val leftEyeY = (h * 0.415f) + (lookY * 0.20f)
+            val rightEyeY = (h * 0.430f) + (lookY * 0.20f)
+
+            val leftEyeW = w * 0.082f
+            val leftEyeH = h * 0.046f
+            val rightEyeW = w * 0.072f
+            val rightEyeH = h * 0.044f
+
+            // Natural blinking overlay (smoothly closes over eyes)
+            if (blinkProgress > 0.05f) {
+                val skinColor = Color(0xFFE5BC8E)
+
+                drawOval(
+                    color = skinColor.copy(alpha = blinkProgress),
+                    topLeft = Offset(leftEyeX - leftEyeW / 2f, leftEyeY - (leftEyeH / 2f) * blinkProgress),
+                    size = Size(leftEyeW, leftEyeH * blinkProgress)
+                )
+                drawOval(
+                    color = skinColor.copy(alpha = blinkProgress),
+                    topLeft = Offset(rightEyeX - rightEyeW / 2f, rightEyeY - (rightEyeH / 2f) * blinkProgress),
+                    size = Size(rightEyeW, rightEyeH * blinkProgress)
+                )
+
+                if (blinkProgress > 0.55f) {
+                    val lashAlpha = ((blinkProgress - 0.55f) / 0.45f).coerceIn(0f, 1f)
+                    val lashColor = Color(0xFF281D1A).copy(alpha = lashAlpha)
+
+                    drawLine(
+                        color = lashColor,
+                        start = Offset(leftEyeX - leftEyeW * 0.45f, leftEyeY),
+                        end = Offset(leftEyeX + leftEyeW * 0.45f, leftEyeY),
+                        strokeWidth = w * 0.015f,
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = lashColor,
+                        start = Offset(rightEyeX - rightEyeW * 0.45f, rightEyeY),
+                        end = Offset(rightEyeX + rightEyeW * 0.45f, rightEyeY),
+                        strokeWidth = w * 0.015f,
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
+
+            // Happy smiling crescent eyes on celebrating/happy/success
+            if (expression == EdamExpression.HAPPY || expression == EdamExpression.CELEBRATING || expression == EdamExpression.SUCCESS) {
+                val arcColor = Color(0xFF281D1A).copy(alpha = 0.85f)
+                val strokeW = w * 0.016f
+
+                drawArc(
+                    color = arcColor,
+                    startAngle = 195f,
+                    sweepAngle = 150f,
+                    useCenter = false,
+                    topLeft = Offset(leftEyeX - leftEyeW * 0.45f, leftEyeY - leftEyeH * 0.4f),
+                    size = Size(leftEyeW * 0.9f, leftEyeH * 0.8f),
+                    style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                )
+                drawArc(
+                    color = arcColor,
+                    startAngle = 195f,
+                    sweepAngle = 150f,
+                    useCenter = false,
+                    topLeft = Offset(rightEyeX - rightEyeW * 0.45f, rightEyeY - rightEyeH * 0.4f),
+                    size = Size(rightEyeW * 0.9f, rightEyeH * 0.8f),
+                    style = Stroke(width = strokeW, cap = StrokeCap.Round)
+                )
+            }
+        }
+
+        // 4. Expression particles overlay (celebration stars, thinking bubbles)
+        if (!isIdle) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val cx = size.width / 2f
+                val cy = size.height / 2f + (idleFloatY + expressionBounceY) * density
+                val baseR = size.width * 0.35f
+                drawExpressionParticles(
+                    cx = cx,
+                    cy = cy,
+                    baseR = baseR,
+                    expression = expression,
+                    character = EdamCompanionCharacter.EDAM,
+                    sparklePulse = sparklePulse
+                )
+            }
         }
     }
 }

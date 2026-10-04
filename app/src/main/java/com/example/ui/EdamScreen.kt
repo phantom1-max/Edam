@@ -46,6 +46,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
@@ -65,12 +67,19 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.OfflinePin
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Verified
 import androidx.compose.material3.Button
@@ -79,6 +88,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -138,6 +151,8 @@ import com.example.data.local.ScreenEntity
 import com.example.data.model.ChessAndFlashcardCatalog
 import com.example.data.model.Course
 import com.example.data.model.CourseUnit
+import com.example.data.model.DiscoverCatalog
+import com.example.data.model.DiscoverSubject
 import com.example.data.model.LeagueTier
 import com.example.data.model.LearningSection
 import com.example.data.model.LessonContent
@@ -410,7 +425,16 @@ fun EdamApp(
                                         dailyStreak = uiState.dailyStreak,
                                         selectedCompanion = uiState.selectedCompanion,
                                         onMasterFlashcard = { viewModel.recordFlashcardMastered() },
-                                        onOpenProfile = { viewModel.toggleProfileModal(true) }
+                                        onOpenProfile = { viewModel.toggleProfileModal(true) },
+                                        onOpenChess = { viewModel.openChessGmCourse() },
+                                        onOpenMarket = { viewModel.openShareMarketCourse() },
+                                        onOpenStreakDashboard = { viewModel.toggleProfileModal(true) },
+                                        onLogStudyActivity = { viewModel.checkInDailyStreak(xpReward = 20) },
+                                        onLaunchCustomTopic = { topic ->
+                                            viewModel.onOutlineTopicChange(topic)
+                                            viewModel.navigateToDestination(AppScreenDestination.COURSE_STUDIO)
+                                        },
+                                        onTestPushReminder = { viewModel.triggerDailyStreakReminderPush(context) }
                                     )
                                     HomeDailyStreakDashboardCard(
                                         dailyStreak = uiState.dailyStreak,
@@ -443,6 +467,43 @@ fun EdamApp(
                                         )
                                     }
                                 }
+                            }
+
+                            // Discover Section: Search & Explore Learning Subjects, Add New Custom Subjects with Firestore Cloud Sync
+                            item(key = "discover_subjects_section") {
+                                DiscoverSubjectsSection(
+                                    searchQuery = uiState.discoverSearchQuery,
+                                    selectedCategory = uiState.discoverSelectedCategory,
+                                    userAddedSubjects = uiState.userAddedSubjects,
+                                    activeCourseId = uiState.activeCourse?.id,
+                                    isExpanded = isExpanded,
+                                    selectedCompanion = uiState.selectedCompanion,
+                                    onSearchQueryChange = viewModel::onDiscoverSearchQueryChange,
+                                    onSelectCategory = viewModel::onDiscoverSelectedCategoryChange,
+                                    onSelectSubject = { subject ->
+                                        viewModel.launchOrSelectDiscoverSubject(
+                                            subject = subject,
+                                            onReady = {
+                                                coroutineScope.launch {
+                                                    listState.animateScrollToItem(5)
+                                                }
+                                            }
+                                        )
+                                    },
+                                    onAddNewSubject = { title, category, level, goal ->
+                                        viewModel.addNewDiscoverSubject(
+                                            title = title,
+                                            category = category,
+                                            level = level,
+                                            goal = goal,
+                                            onSuccess = {
+                                                coroutineScope.launch {
+                                                    listState.animateScrollToItem(5)
+                                                }
+                                            }
+                                        )
+                                    }
+                                )
                             }
 
                             // 1: Trending Courses Financial Market Dashboard + Multi-Instrument & Multi-Graph Learning Lab
@@ -1157,9 +1218,17 @@ private fun EdamHeroSection(
     selectedCompanion: EdamCompanionCharacter,
     onMasterFlashcard: () -> Unit,
     onOpenProfile: () -> Unit,
+    onOpenChess: () -> Unit,
+    onOpenMarket: () -> Unit,
+    onOpenStreakDashboard: () -> Unit,
+    onLogStudyActivity: () -> Unit,
+    onLaunchCustomTopic: (String) -> Unit,
+    onTestPushReminder: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val themeSpec = LocalEdamThemeSpec.current
+    var customTopicInput by remember { mutableStateOf("") }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -1172,6 +1241,85 @@ private fun EdamHeroSection(
             .testTag("hero_section"),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Prominent In-App Toast / Banner Reminder when daily study streak is not completed today
+        if (!dailyStreak.studiedToday) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 780.dp)
+                    .padding(bottom = 12.dp)
+                    .testTag("hero_streak_at_risk_banner"),
+                shape = RoundedCornerShape(18.dp),
+                color = Color(0xFF7F1D1D),
+                border = BorderStroke(1.5.dp, Color(0xFFEF4444)),
+                shadowElevation = 6.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFF581C87), Color(0xFF991B1B), Color(0xFFB45309))
+                            )
+                        )
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.LocalFireDepartment,
+                            contentDescription = null,
+                            tint = Color(0xFFFDE047),
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "🔥 Daily Study Streak Reminder (${dailyStreak.currentStreak}-Day Streak)",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                            Text(
+                                text = "You haven't studied today yet! Complete a quick 2-minute lesson or flip flashcards now to keep your streak burning and claim +20 XP.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFF3F4F6)
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = onLogStudyActivity,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFF59E0B),
+                                contentColor = Color(0xFF1F2937)
+                            ),
+                            modifier = Modifier.weight(1f).testTag("streak_banner_study_button")
+                        ) {
+                            Text("⚡ Study Now (+20 XP)", fontWeight = FontWeight.Bold, maxLines = 1)
+                        }
+                        OutlinedButton(
+                            onClick = onTestPushReminder,
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.7f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier.testTag("streak_banner_push_button")
+                        ) {
+                            Icon(imageVector = Icons.Filled.NotificationsActive, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Push Alert", maxLines = 1)
+                        }
+                    }
+                }
+            }
+        }
+
         // Live Streak + XP + Active Companion Status Pill
         Surface(
             onClick = onOpenProfile,
@@ -1328,6 +1476,260 @@ private fun EdamHeroSection(
             flashcardsReviewedCount = dailyStreak.flashcardsReviewedCount,
             onMasterFlashcard = { onMasterFlashcard() }
         )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // Three Highlighted Core Disciplines: Chess, Stock Market, Daily Flashcard Streaks
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 780.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // 1: Chess Tactics & GM Academy
+            Surface(
+                onClick = onOpenChess,
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                border = BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.5f)),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("hero_chess_highlight_card")
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("♟️", fontSize = 20.sp)
+                        Text(
+                            text = "Chess GM",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                    }
+                    Text(
+                        text = "Tactical puzzles, 8x8 board trainer & 5-unit GM curriculum guided by Vex.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3
+                    )
+                    Text(
+                        text = "Open Board →",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFF8B5CF6)
+                    )
+                }
+            }
+
+            // 2: Stock Market & Live Trading Simulator
+            Surface(
+                onClick = onOpenMarket,
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("hero_market_highlight_card")
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("📈", fontSize = 20.sp)
+                        Text(
+                            text = "Stock Market",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                    }
+                    Text(
+                        text = "Equities, options, RSI, OHLC candlesticks & order books with RoboBroker.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3
+                    )
+                    Text(
+                        text = "Trade Simulator →",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFF10B981)
+                    )
+                }
+            }
+
+            // 3: Daily Flashcards & Consecutive Streaks
+            Surface(
+                onClick = onOpenStreakDashboard,
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.5f)),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("hero_streak_highlight_card")
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("⚡", fontSize = 20.sp)
+                        Text(
+                            text = "Daily Streaks",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                    }
+                    Text(
+                        text = "${dailyStreak.currentStreak} days active! Review formulas, earn XP and protect your streak.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 3
+                    )
+                    Text(
+                        text = "Streak Hub →",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFFF59E0B)
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(18.dp))
+
+        // Learn Any Other Subject on Earth Card
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 780.dp)
+                .testTag("hero_learn_any_subject_card"),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+            shadowElevation = 4.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                                MaterialTheme.colorScheme.surface
+                            )
+                        )
+                    )
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.AutoAwesome,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                    Column {
+                        Text(
+                            text = "Learn Any Other Subject on Earth",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Edam synthesizes personalized curricula, quizzes & flashcards for any discipline.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Quick Subject Topic Pills
+                val quickSubjects = listOf(
+                    "🐍 Python & Coding Viruses",
+                    "⚛️ Quantum Computing",
+                    "🧬 Genetics & DNA",
+                    "🌍 World History",
+                    "🇯🇵 Japanese Fluency",
+                    "🎵 Music Theory & Harmony"
+                )
+
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 2.dp)
+                ) {
+                    items(quickSubjects) { subject ->
+                        SuggestionChip(
+                            onClick = {
+                                val clean = subject.substringAfter(" ")
+                                onLaunchCustomTopic(clean)
+                            },
+                            label = { Text(subject, style = MaterialTheme.typography.labelSmall) },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                    }
+                }
+
+                // Custom Topic Input Bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = customTopicInput,
+                        onValueChange = { customTopicInput = it },
+                        placeholder = { Text("e.g. Astrophysics, Organic Chemistry...", fontSize = 13.sp) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("custom_topic_input")
+                    )
+
+                    Button(
+                        onClick = {
+                            val topic = customTopicInput.ifBlank { "Quantum Physics" }
+                            onLaunchCustomTopic(topic)
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        ),
+                        modifier = Modifier.testTag("launch_custom_topic_button")
+                    ) {
+                        Icon(imageVector = Icons.Filled.School, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Create", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1676,6 +2078,588 @@ private fun ResumeLearningBanner(
                     contentDescription = null,
                     modifier = Modifier.size(18.dp)
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun DiscoverSubjectsSection(
+    searchQuery: String,
+    selectedCategory: String,
+    userAddedSubjects: List<DiscoverSubject>,
+    activeCourseId: String?,
+    isExpanded: Boolean,
+    selectedCompanion: EdamCompanionCharacter,
+    onSearchQueryChange: (String) -> Unit,
+    onSelectCategory: (String) -> Unit,
+    onSelectSubject: (DiscoverSubject) -> Unit,
+    onAddNewSubject: (title: String, category: String, level: String, goal: String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var showAddDialog by remember { mutableStateOf(false) }
+    val themeSpec = LocalEdamThemeSpec.current
+
+    val allSubjects = remember(userAddedSubjects) {
+        val presetIds = DiscoverCatalog.PRESET_SUBJECTS.map { it.id }.toSet()
+        userAddedSubjects.filter { it.id !in presetIds } + DiscoverCatalog.PRESET_SUBJECTS
+    }
+
+    val filteredSubjects = remember(allSubjects, searchQuery, selectedCategory) {
+        allSubjects.filter { subject ->
+            val matchesCategory = selectedCategory == "All" ||
+                subject.category.equals(selectedCategory, ignoreCase = true) ||
+                subject.category.contains(selectedCategory.split(" ").first(), ignoreCase = true)
+            val matchesQuery = searchQuery.isBlank() ||
+                subject.title.contains(searchQuery, ignoreCase = true) ||
+                subject.description.contains(searchQuery, ignoreCase = true) ||
+                subject.tagList.any { it.contains(searchQuery, ignoreCase = true) }
+            matchesCategory && matchesQuery
+        }
+    }
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("discover_subjects_section"),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        tonalElevation = if (themeSpec.isHighContrast) 0.dp else 2.dp,
+        shadowElevation = if (themeSpec.isHighContrast) 0.dp else 8.dp,
+        border = BorderStroke(
+            width = if (themeSpec.isHighContrast) 2.dp else 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Header with Title and "Add Subject" button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Explore,
+                            contentDescription = null,
+                            tint = Color(0xFFF59E0B),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Text(
+                            text = "Discover New Subjects",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = (-0.3).sp
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Text(
+                        text = "Search catalog or add custom topics with real-time Firestore sync",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Button(
+                    onClick = { showAddDialog = true },
+                    modifier = Modifier.testTag("btn_open_add_subject_dialog"),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF10B981),
+                        contentColor = Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Add Subject", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                }
+            }
+
+            // Search Bar
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onSearchQueryChange,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("discover_search_input"),
+                placeholder = {
+                    Text(
+                        "Search subjects, topics, or fields (e.g. AI, Trading, Physics...)",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotBlank()) {
+                        IconButton(onClick = { onSearchQueryChange("") }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear search", modifier = Modifier.size(18.dp))
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+
+            // Category Filter Chips
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(DiscoverCatalog.CATEGORIES) { cat ->
+                    val isSelected = selectedCategory == cat
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { onSelectCategory(cat) },
+                        label = { Text(cat, style = MaterialTheme.typography.labelSmall) },
+                        shape = RoundedCornerShape(999.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                            containerColor = MaterialTheme.colorScheme.surface
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = isSelected,
+                            borderColor = MaterialTheme.colorScheme.outlineVariant
+                        )
+                    )
+                }
+            }
+
+            // Subjects List or Empty State
+            if (filteredSubjects.isEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        EdamMascot(
+                            expression = EdamExpression.CURIOUS,
+                            character = selectedCompanion,
+                            size = 72.dp,
+                            showTablet = false
+                        )
+                        Text(
+                            text = if (searchQuery.isNotBlank()) {
+                                "No existing subjects found for \"$searchQuery\""
+                            } else {
+                                "No subjects in this category yet"
+                            },
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "Would you like Edam to synthesize a brand new curriculum for this topic and sync it with Firestore?",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                        if (searchQuery.isNotBlank()) {
+                            Button(
+                                onClick = {
+                                    onAddNewSubject(
+                                        searchQuery.trim(),
+                                        selectedCategory.takeIf { it != "All" } ?: "Technology & AI",
+                                        "Beginner",
+                                        "Comprehensive foundational and applied mastery in $searchQuery"
+                                    )
+                                },
+                                modifier = Modifier.testTag("btn_generate_search_query_course"),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFF59E0B),
+                                    contentColor = Color.Black
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Generate \"$searchQuery\" with Edam (+60 XP)", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+                            }
+                        }
+                    }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    filteredSubjects.forEach { subject ->
+                        val isActive = subject.id == activeCourseId
+                        DiscoverSubjectCard(
+                            subject = subject,
+                            isActive = isActive,
+                            onSelect = { onSelectSubject(subject) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddDialog) {
+        AddDiscoverSubjectDialog(
+            onDismiss = { showAddDialog = false },
+            onSubmit = { title, cat, lvl, goal ->
+                onAddNewSubject(title, cat, lvl, goal)
+                showAddDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+private fun DiscoverSubjectCard(
+    subject: DiscoverSubject,
+    isActive: Boolean,
+    onSelect: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = if (isActive) Color(0xFF1E293B) else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            width = if (isActive) 1.5.dp else 1.dp,
+            color = if (isActive) Color(0xFF10B981) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("discover_subject_card_${subject.id}")
+            .clickable { onSelect() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFF59E0B).copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = subject.category.uppercase(),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = Color(0xFFF59E0B),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                    if (subject.isUserAdded) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFF10B981).copy(alpha = 0.15f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.CloudDone,
+                                    contentDescription = null,
+                                    tint = Color(0xFF10B981),
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = "Firestore Synced",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Color(0xFF10B981)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Text(
+                        text = subject.level,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = subject.title,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            Text(
+                text = subject.description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Layers, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(14.dp))
+                        Text("${subject.unitsCount} Units", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Bolt, contentDescription = null, tint = Color(0xFFF59E0B), modifier = Modifier.size(14.dp))
+                        Text("+${subject.xpReward} XP", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color(0xFFF59E0B))
+                    }
+                }
+
+                if (isActive) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF10B981).copy(alpha = 0.2f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(14.dp))
+                            Text("Active Subject", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color(0xFF10B981))
+                        }
+                    }
+                } else {
+                    Button(
+                        onClick = onSelect,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("Start Learning", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(14.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddDiscoverSubjectDialog(
+    onDismiss: () -> Unit,
+    onSubmit: (title: String, category: String, level: String, goal: String) -> Unit
+) {
+    var title by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf("Technology & AI") }
+    var level by remember { mutableStateOf("Intermediate") }
+    var goal by remember { mutableStateOf("") }
+    var categoryExpanded by remember { mutableStateOf(false) }
+    var levelExpanded by remember { mutableStateOf(false) }
+
+    val categories = listOf("Technology & AI", "Finance & Markets", "Strategy & Logic", "Science & Math", "Humanities")
+    val levels = listOf("Beginner", "Intermediate", "Advanced", "Mastery")
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .widthIn(max = 520.dp)
+                .clip(RoundedCornerShape(24.dp)),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Add Learning Subject",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Text(
+                            text = "Curriculum will be saved & synced with Firestore",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    }
+                }
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("Subject Title") },
+                    placeholder = { Text("e.g. Quantum Cryptography, Biohacking...") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("add_subject_title_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    ExposedDropdownMenuBox(
+                        expanded = categoryExpanded,
+                        onExpandedChange = { categoryExpanded = !categoryExpanded },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedTextField(
+                            value = category,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Category") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        ExposedDropdownMenu(
+                            expanded = categoryExpanded,
+                            onDismissRequest = { categoryExpanded = false }
+                        ) {
+                            categories.forEach { cat ->
+                                DropdownMenuItem(
+                                    text = { Text(cat) },
+                                    onClick = {
+                                        category = cat
+                                        categoryExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    ExposedDropdownMenuBox(
+                        expanded = levelExpanded,
+                        onExpandedChange = { levelExpanded = !levelExpanded },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        OutlinedTextField(
+                            value = level,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Level") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = levelExpanded) },
+                            modifier = Modifier
+                                .menuAnchor()
+                                .fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        ExposedDropdownMenu(
+                            expanded = levelExpanded,
+                            onDismissRequest = { levelExpanded = false }
+                        ) {
+                            levels.forEach { lvl ->
+                                DropdownMenuItem(
+                                    text = { Text(lvl) },
+                                    onClick = {
+                                        level = lvl
+                                        levelExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                OutlinedTextField(
+                    value = goal,
+                    onValueChange = { goal = it },
+                    label = { Text("Learning Goal / Focus") },
+                    placeholder = { Text("What core competencies do you want to master?") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("add_subject_goal_input"),
+                    shape = RoundedCornerShape(12.dp),
+                    minLines = 2,
+                    maxLines = 4
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (title.isNotBlank()) {
+                                onSubmit(
+                                    title.trim(),
+                                    category,
+                                    level,
+                                    goal.ifBlank { "Master $title from foundations to advanced applications" }
+                                )
+                            }
+                        },
+                        enabled = title.isNotBlank(),
+                        modifier = Modifier.testTag("add_subject_submit_button"),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF10B981),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Add & Sync Subject", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+                    }
+                }
             }
         }
     }

@@ -26,6 +26,11 @@ object EdamNotificationHelper {
     private const val DAILY_GOAL_CHANNEL_DESC = "Scheduled WorkManager reminders alerting you to complete your daily Edam learning target."
     private const val DAILY_GOAL_NOTIFICATION_ID = 7788
 
+    const val STREAK_REMINDER_CHANNEL_ID = "edam_streak_reminders"
+    private const val STREAK_REMINDER_CHANNEL_NAME = "Daily Study Streak Reminders"
+    private const val STREAK_REMINDER_CHANNEL_DESC = "Alerts reminding learners to complete their daily study streak before midnight."
+    private const val STREAK_REMINDER_NOTIFICATION_ID = 8899
+
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
@@ -45,8 +50,17 @@ object EdamNotificationHelper {
                 description = DAILY_GOAL_CHANNEL_DESC
                 enableVibration(true)
             }
+            val streakChannel = NotificationChannel(
+                STREAK_REMINDER_CHANNEL_ID,
+                STREAK_REMINDER_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = STREAK_REMINDER_CHANNEL_DESC
+                enableVibration(true)
+            }
             manager?.createNotificationChannel(milestoneChannel)
             manager?.createNotificationChannel(dailyGoalChannel)
+            manager?.createNotificationChannel(streakChannel)
         }
     }
 
@@ -200,6 +214,63 @@ object EdamNotificationHelper {
             NotificationManagerCompat.from(context).notify(DAILY_GOAL_NOTIFICATION_ID, notification)
         } catch (e: SecurityException) {
             Log.e("EdamNotificationHelper", "SecurityException posting daily goal reminder", e)
+        }
+    }
+
+    /**
+     * Dispatches an Android push notification reminding the user to complete their daily study streak
+     * if they haven't studied yet today.
+     */
+    fun sendDailyStreakReminderNotification(
+        context: Context,
+        currentStreak: Int,
+        studiedToday: Boolean
+    ) {
+        createNotificationChannel(context)
+
+        if (!hasNotificationPermission(context)) {
+            Log.w("EdamNotificationHelper", "POST_NOTIFICATIONS permission not granted; skipping streak reminder.")
+            return
+        }
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra("open_streak_reminder", true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            STREAK_REMINDER_NOTIFICATION_ID,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+        )
+
+        val title = if (studiedToday) {
+            "🔥 Great Momentum! Your $currentStreak-Day Streak is Protected"
+        } else {
+            "🔥 Daily Streak Alert: Keep your $currentStreak-day streak alive!"
+        }
+
+        val bodyText = if (studiedToday) {
+            "You completed your study session for today! Keep up the momentum tomorrow."
+        } else {
+            "Don't lose your $currentStreak-day study streak! Complete a 2-minute lesson or flip flashcards today to earn +20 bonus XP."
+        }
+
+        val notification = NotificationCompat.Builder(context, STREAK_REMINDER_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification_badge)
+            .setContentTitle(title)
+            .setContentText(bodyText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bodyText))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(context).notify(STREAK_REMINDER_NOTIFICATION_ID, notification)
+        } catch (e: SecurityException) {
+            Log.e("EdamNotificationHelper", "SecurityException posting streak reminder", e)
         }
     }
 }

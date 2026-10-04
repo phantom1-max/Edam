@@ -4,23 +4,20 @@ Edam is an AI-powered interactive learning application built with Kotlin, Jetpac
 
 ## Features
 
-- **Daily Learning Streak with Firestore Cloud Sync**: Tracks consecutive days of learning activity both in local preferences and in Firebase Firestore (`/users/{userId}/streaks/daily`). Features a prominent flame icon with current streak counter on the home dashboard, streak freeze protection, and a 7-day consistency strip.
-- **4 Distinct Companions with Cursor Eye-Tracking**:
-  - **Edam**: Golden Dutch Cheese Wheel & Botanical Sprout with rosy cheek dimples.
-  - **Kora**: Quant Bull Fox with pointed crimson ears, curved gold bull horns, fluffy emerald-tipped tail, and Wall Street tie.
-  - **Vex**: Grandmaster Owl with feathered purple wings, tufted brow plumes, golden spectacles, diamond beak, and GM chess crown.
-  - **Nova**: Futuristic Cyber Synth Bot with a hexagonal chassis, dark LED visor faceplate, side plasma ear-pods, and anti-gravity hover rings.
-  - **Idle Cursor Eye-Tracking**: When companions are doing nothing (in `IDLE` state with no active animation), their body remains still while their eyes smoothly follow mouse cursor movements across the screen on PC, ChromeOS, and touch devices.
-- **User-Defined Daily Lesson Goal**: Configure daily targets (1–10 lessons/day) backed by Jetpack DataStore with real-time progress bars.
-- **Push Notification Goal Reminders**: Scheduled via Android WorkManager to remind learners at custom times.
-- **Course Generation with Gemini**: Enter a subject, proficiency level (`Beginner` through `Professional`), and learning goal to generate structured curricula with learning outcomes.
-- **On-Demand Interactive Lessons & Quizzes**: Complete interactive lessons, test comprehension with quizzes, and earn badges.
-
-## Pre-Built APK in Repository
-
-The Android APK is compiled and directly available in the repository under the `releases/` directory:
-- `releases/edam-android-latest.apk`: Ready to install or sideload immediately on Android.
-- `releases/edam-android-v1.2.0.apk`: Versioned release archive.
+- **Daily Learning Streak with Firestore Cloud Sync & Push Notifications**: Tracks consecutive days of learning activity in local preferences and Firebase Firestore (`/users/{userId}/streaks/daily`). Features a prominent flame icon with current streak counter on the home dashboard, streak freeze protection, 7-day consistency strip, daily Android push notification alerts via WorkManager, and in-app streak defense banners when the user hasn't studied today yet.
+- **Firestore Badges & Learning Milestones**: Tracks multi-domain achievements in Firestore (Daily Streaks, Stock Market, Chess Tactics, Coding, and Polymath courses) displayed dynamically with unlock progress in the user profile.
+- **Companions & Mascot System**:
+  - **Edam**: The main hooded learning mascot with sprout, tablet, and backpack.
+  - **RoboBroker / Businessman Robot**: Stock Market executive robot with titanium chassis, golden stock ticker coin crest, and red tie.
+  - **Bit Virus**: Coding & cyber companion with matrix emerald green capsid, viral bit nodes, and terminal visor eyes.
+  - **Vex**: Grandmaster Chess companion guiding 8x8 tactics and 5-unit curriculum.
+- **First Hero Section with 3 Highlighted Domains & Learn Any Subject AI**:
+  - Highlights **Chess GM Academy & Tactics**, **Stock Market & Live Trading Simulator**, and **Daily Flashcard Streaks**.
+  - Interactive **"Learn Any Other Subject on Earth"** launcher allowing learners to generate custom curricula on any topic (Python, Quantum Physics, World History, etc.) with AI.
+- **Multi-Provider Authentication**: Separate "Sign In with Google" and "Create Account with Google" flows, along with Apple, GitHub, Facebook, Phone SMS OTP, Email/Password, and Guest access.
+- **Pre-Built APK in Repository**:
+  - Direct download: [`releases/edam-android-latest.apk`](releases/edam-android-latest.apk) (v1.3.0 signed package).
+  - Versioned archive: [`releases/edam-android-v1.3.0.apk`](releases/edam-android-v1.3.0.apk).
 
 ## Editable Versions & Multi-Platform Release (Windows, macOS, Linux, Android)
 

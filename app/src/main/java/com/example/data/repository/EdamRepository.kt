@@ -494,6 +494,32 @@ class EdamRepository(
         return newlyEarned
     }
 
+    suspend fun recordBadgeUnlocked(
+        badgeId: String,
+        badgeTitle: String,
+        percentageRequired: Int,
+        courseId: String,
+        courseTitle: String,
+        description: String = "",
+        iconKey: String = "military_tech",
+        colorCategory: String = "gold"
+    ): EarnedBadgeEntity {
+        val existing = dao.getEarnedBadge(badgeId, courseId)
+        if (existing != null) return existing
+        val newBadge = EarnedBadgeEntity(
+            badgeId = badgeId,
+            courseId = courseId,
+            courseTitle = courseTitle,
+            badgeTitle = badgeTitle,
+            description = description.ifBlank { "Earned milestone: $badgeTitle" },
+            percentageRequired = percentageRequired,
+            iconKey = iconKey,
+            colorCategory = colorCategory
+        )
+        dao.insertEarnedBadge(newBadge)
+        return newBadge
+    }
+
     suspend fun selectCourse(courseId: String) {
         dao.clearActiveCourses()
         dao.markCourseActive(courseId)

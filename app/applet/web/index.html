@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edam — Micro-Learning Companion</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#F59E0B">
+  <link rel="icon" type="image/png" href="./edam_mascot.png">
+</head>
+<body>
+
+  <!-- Top App Navigation Bar -->
+  <header class="app-header">
+    <div class="header-container">
+      <a href="#" class="brand-wrapper">
+        <div class="header-mascot-preview">
+          <img src="./edam_mascot.png" alt="Edam">
+        </div>
+        <div>
+          <span class="brand-title">Edam</span>
+          <span class="brand-tag">Study Companion</span>
+        </div>
+      </a>
+
+      <div class="header-actions">
+        <div class="streak-pill" id="headerStreakPill" title="Daily Study Streak">
+          🔥 <span id="streakCount">3</span> Day Streak
+        </div>
+        <div class="xp-badge" id="headerXpBadge" title="Total XP">
+          ⭐ <span id="totalXp">420</span> XP
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="main-content">
+
+    <!-- Daily Streak Notification Banner -->
+    <section class="toast-banner active" id="dailyReminderToast">
+      <div class="toast-content">
+        <span class="toast-icon">⏰</span>
+        <div>
+          <div class="toast-title">Keep your 3-day streak alive!</div>
+          <div class="toast-sub">Complete 1 quick micro-lesson today with Edam to earn +35 XP and maintain your flame.</div>
+        </div>
+      </div>
+      <button class="toast-btn" id="startLessonBtn">Study Now</button>
+    </section>
+
+    <!-- Hero Mascot Dashboard Card -->
+    <section class="hero-card">
+      <div class="hero-mascot-container">
+        <!-- Soft Ground Ambient Shadow -->
+        <div class="mascot-shadow"></div>
+
+        <!-- Animated Mascot Wrapper (Breathing, Tilt, Nod, Tap Squash) -->
+        <div class="mascot-character-wrapper" id="edamHeroMascot" title="Click Edam to interact!">
+          <!-- Transparent Mascot Base Image -->
+          <img src="./edam_mascot.png" alt="Edam Mascot" class="mascot-image-base" id="mascotImage">
+
+          <!-- Natural Blinking Eyelid Layer -->
+          <div class="mascot-eyelid-layer">
+            <div class="eyelid eyelid-left"></div>
+            <div class="eyelid eyelid-right"></div>
+          </div>
+
+          <!-- Smiling Crescent Eyes Layer -->
+          <div class="smile-eyes">
+            <div class="smile-arc-left"></div>
+            <div class="smile-arc-right"></div>
+          </div>
+
+          <!-- Celebration Sparkle Layer -->
+          <div class="sparkle-container">
+            <span class="sparkle" style="top: 10%; left: 20%;">✨</span>
+            <span class="sparkle" style="top: 25%; right: 15%; animation-delay: 0.4s;">⭐</span>
+            <span class="sparkle" style="top: 5%; right: 30%; animation-delay: 0.8s;">✨</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-info">
+        <div class="hero-badge">EDAM · CONCEPT ARCHITECT</div>
+        <h1 class="hero-title" id="heroGreeting">Ready for today's micro-lesson?</h1>
+        <p class="hero-desc" id="heroSubtitle">
+          Edam is resting comfortably by your side, ready to unpack complex topics into elegant mental models. Tap Edam to say hi, or choose a subject below!
+        </p>
+        <div class="hero-controls">
+          <button class="btn-primary" id="heroActionBtn">
+            <span>🚀 Continue Study</span>
+          </button>
+          <button class="btn-secondary" id="heroInteractBtn">
+            <span>✨ Poke Edam</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Discover Section -->
+    <section class="discover-section" id="discover">
+      <div class="section-header">
+        <div class="section-title-wrap">
+          <span class="section-icon">🔭</span>
+          <div>
+            <h2 class="section-title">Discover New Subjects</h2>
+            <div class="section-subtitle">Search curated courses or create custom subjects backed by Firestore cloud sync</div>
+          </div>
+        </div>
+        <button class="btn-add-subject" id="openAddSubjectBtn">
+          <span>+ Add Custom Subject</span>
+        </button>
+      </div>
+
+      <!-- Search & Category Filters -->
+      <div class="search-container">
+        <div class="search-input-wrapper">
+          <span class="search-icon">🔍</span>
+          <input 
+            type="text" 
+            class="search-input" 
+            id="subjectSearchInput" 
+            placeholder="Search learning subjects (e.g. AI, Trading, Chess, Logic, Quantum)..."
+            autocomplete="off"
+          >
+        </div>
+
+        <div class="category-chips" id="categoryChips">
+          <button class="category-chip active" data-category="All">All</button>
+          <button class="category-chip" data-category="Technology & AI">Technology & AI</button>
+          <button class="category-chip" data-category="Markets & Trading">Markets & Trading</button>
+          <button class="category-chip" data-category="Strategy & Logic">Strategy & Logic</button>
+          <button class="category-chip" data-category="Science & Math">Science & Math</button>
+          <button class="category-chip" data-category="Creative Arts">Creative Arts</button>
+        </div>
+      </div>
+
+      <!-- Subjects Grid -->
+      <div class="subjects-grid" id="subjectsGrid">
+        <!-- Populated dynamically via app.js -->
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Add New Subject Modal -->
+  <div class="modal-overlay" id="addSubjectModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Add New Learning Subject</h3>
+        <button class="close-btn" id="closeAddSubjectModal">&times;</button>
+      </div>
+      <form id="addSubjectForm">
+        <div class="form-group">
+          <label class="form-label" for="newSubjectTitle">Subject Title *</label>
+          <input type="text" id="newSubjectTitle" class="form-input" placeholder="e.g. Distributed Systems Architecture" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="newSubjectCategory">Category *</label>
+          <select id="newSubjectCategory" class="form-select">
+            <option value="Technology & AI">Technology & AI</option>
+            <option value="Markets & Trading">Markets & Trading</option>
+            <option value="Strategy & Logic">Strategy & Logic</option>
+            <option value="Science & Math">Science & Math</option>
+            <option value="Creative Arts">Creative Arts</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="newSubjectLevel">Difficulty Level</label>
+          <select id="newSubjectLevel" class="form-select">
+            <option value="Beginner">Beginner</option>
+            <option value="Intermediate" selected>Intermediate</option>
+            <option value="Advanced">Advanced</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="newSubjectGoal">Learning Objective / Goal</label>
+          <textarea id="newSubjectGoal" class="form-textarea" rows="3" placeholder="What key concepts and real-world skills do you want to master?"></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" id="cancelAddSubjectBtn">Cancel</button>
+          <button type="submit" class="btn-primary">
+            <span>☁️ Save to Firestore & Start</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Interactive Lesson / Quiz Modal -->
+  <div class="modal-overlay" id="lessonModal">
+    <div class="lesson-modal-card">
+      <div class="modal-header">
+        <div>
+          <div class="brand-tag" id="lessonModalTag">LESSON 1 OF 3</div>
+          <h3 class="modal-title" id="lessonModalTitle">Concept Overview</h3>
+        </div>
+        <button class="close-btn" id="closeLessonModal">&times;</button>
+      </div>
+
+      <div id="lessonContentBody" style="color: var(--text-muted); line-height: 1.6;">
+        <!-- Injected lesson text -->
+      </div>
+
+      <div style="margin-top: 1rem;">
+        <h4 style="color: #FFF; margin-bottom: 0.75rem;" id="quizQuestionText">Quick Knowledge Check</h4>
+        <div style="display: flex; flex-direction: column; gap: 0.5rem;" id="quizOptionsList">
+          <!-- Quiz options -->
+        </div>
+      </div>
+
+      <div id="quizFeedbackBox" style="display: none; padding: 1rem; border-radius: 12px; margin-top: 0.5rem;"></div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="finishLessonBtn" style="display: none;">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <p>Edam Learning Companion · Android APK & Web Edition · Fully Synced with Firestore Cloud</p>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+</html>

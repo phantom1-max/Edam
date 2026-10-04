@@ -4,8 +4,9 @@ This directory contains pre-built installation files for Edam that are tracked i
 
 ## Files
 
-- `edam-android-latest.apk`: The latest compiled Android APK for sideloading on any Android device or emulator.
-- `edam-android-v1.2.0.apk`: Versioned Android package.
+- `edam-android-latest.apk`: The latest compiled Android APK (v1.3.0) for sideloading on any Android device or emulator.
+- `edam-android-v1.3.0.apk`: Version 1.3.0 signed package with Daily Streak Push Notifications, Badges System in Firestore, Mascot Characters (Businessman Robot & Bit Computer Virus), and 3 Hero Highlighted Features + Any Subject AI Builder.
+- `edam-android-v1.2.0.apk`: Legacy versioned Android package.
 
 ## Releasing New Versions
 
